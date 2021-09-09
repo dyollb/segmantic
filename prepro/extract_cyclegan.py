@@ -2,22 +2,9 @@ import os
 import numpy as np
 import itk
 from random import randint
-import math
-from typing import List, Optional, Union
-
-
-image_3d = itk.itkImagePython.itkImageBase3
-image_2d = itk.itkImagePython.itkImageBase2
-
-
-def as_image(x: Union[image_3d, image_2d, np.ndarray]):
-    if isinstance(x, np.ndarray):
-        return itk.image_view_from_array(x)
-    return x
-
-
-def identity(x):
-    return x
+from typing import List
+from .core import extract_slices, resample, scale_to_range, identity, any_image
+from .modality import scale_clamp_ct
 
 
 def bbox(img):
@@ -27,19 +14,6 @@ def bbox(img):
     rmin, rmax = np.where(rows)[0][[0, -1]]
     cmin, cmax = np.where(cols)[0][[0, -1]]
     return rmin, rmax, cmin, cmax
-
-
-def extract_slices(img: image_3d, axis: int= 2):
-    ''' Get 2D image slices from 3D image '''
-    slices = []
-    for k in range(img.shape[axis]):
-        if axis == 0:
-            slices.append(img[k, :, :])
-        elif axis == 1:
-            slices.append(img[:, k, :])
-        else:
-            slices.append(img[:, :, k])
-    return slices
 
 
 def export_slices(
@@ -99,69 +73,8 @@ def export_slices(
             )
 
 
-def scale_to_uchar(img: Union[image_2d, image_3d]):
-    """scale numpy itk.Image to fit in range [0,255]"""
-    x_view = itk.array_view_from_image(img)
-    x_min, x_max = np.min(x_view), np.max(x_view)
-    x_view -= x_min
-    np.multiply(x_view, 255.0 / (x_max - x_min), out=x_view, casting="unsafe")
-    np.clip(x_view, a_min=0, a_max=255, out=x_view)
-    return img
-
-
-def resample(img: Union[image_2d, image_3d], target_spacing=Optional[tuple]):
-    """resample N-D itk.Image to a fixed spacing (default:0.85)"""
-    dim = img.GetImageDimension()
-    interpolator = itk.LinearInterpolateImageFunction.New(img)
-    transform = itk.IdentityTransform[itk.D, dim].New()
-
-    if not target_spacing:
-        target_spacing = [0.85] * dim
-
-    size = itk.size(img)
-    spacing = itk.spacing(img)
-    for d in range(dim):
-        size[d] = math.ceil(size[d] * spacing[d] / 0.85)
-        spacing[d] = target_spacing[d]
-
-    # resample to target resolution
-    resampled = itk.resample_image_filter(
-        img,
-        transform=transform,
-        interpolator=interpolator,
-        size=size,
-        output_spacing=spacing,
-        output_origin=itk.origin(img),
-        output_direction=img.GetDirection(),
-    )
-    return resampled
-
-
-def pad_slice(img: image_2d, target_size: tuple = (256, 256)):
-    size = itk.size(img)
-    delta = (t - min(s, t) for s, t in zip(size, target_size))
-
-    if any(delta):
-        pad_lo = ((d + 1) // 2 for d in delta)
-        pad_hi = (delta[i] - p for i, p in enumerate(pad_lo))
-        img = itk.constant_pad_image_filter(
-            img,
-            pad_lower_bound=pad_lo,
-            pad_upper_bound=pad_hi,
-            constant=0,
-        )
-    return img
-
-
-def preprocess_ct(img: Union[image_2d, image_3d]):
-    # median filter for salt and pepper noise
-    img = itk.median_image_filter(img, radius=1)
-    # range clamped to [-1100, 3100] and scaled to [0, 255]
-    img_view = itk.array_view_from_image(img)
-    img_view += 1100
-    img_view *= 255.0 / (1100.0 + 3100.0)
-    np.clip(img_view, a_min=0, a_max=300, out=img_view)
-    return img
+def scale_to_uchar(img: any_image):
+    return scale_to_range(img, vmin=0, vmax=255)
 
 
 def get_files(dir: str, cond=lambda x: True, ext: str = ".nii.gz"):

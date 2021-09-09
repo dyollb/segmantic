@@ -3,7 +3,7 @@ pytorch-lightning==0.9.0
 torch==1.9.0+cu111
 torchvision==0.10.0+cu111
 torchmetrics==0.5.0
-tensorboard==2.6.0
+tensorboard==2.2.0
 itk-io==5.2.0.post2
 itk-filtering==5.2.0.post2
 monai-weekly==0.7.dev2132

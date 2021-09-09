@@ -2,13 +2,21 @@ import os
 import numpy as np
 import itk
 from random import randint
+from .core import identity
+from .modality import scale_clamp_ct
 
 
-def identity(x):
-    return x
-
-def export_slices(im1_dir, im2_dir, labels_dir, output_dir, tag1="A", tag2="B", process_img1=identity, process_img2=identity):
-
+def export_slices(
+    im1_dir,
+    im2_dir,
+    labels_dir,
+    output_dir,
+    tag1="A",
+    tag2="B",
+    process_img1=identity,
+    process_img2=identity,
+):
+    '''Create paired dataset for use with pix2pix (first run combine_A_B.py)'''
     files = []
     for f in os.listdir(im1_dir):
         if not f.endswith(".nii.gz"):
@@ -40,10 +48,10 @@ def export_slices(im1_dir, im2_dir, labels_dir, output_dir, tag1="A", tag2="B", 
             if np.max(labels[k, :, :]) == 0:
                 continue
 
-            s1 = randint(0, img1.shape[1]-256)
-            s2 = randint(0, img1.shape[2]-256)
-            slice1 = itk.image_from_array(img1[k, s1:s1+256, s2:s2+256])
-            slice2 = itk.image_from_array(img2[k, s1:s1+256, s2:s2+256])
+            s1 = randint(0, img1.shape[1] - 256)
+            s2 = randint(0, img1.shape[2] - 256)
+            slice1 = itk.image_from_array(img1[k, s1 : s1 + 256, s2 : s2 + 256])
+            slice2 = itk.image_from_array(img2[k, s1 : s1 + 256, s2 : s2 + 256])
             itk.imwrite(
                 slice1.astype(itk.SS),
                 os.path.join(
@@ -59,22 +67,13 @@ def export_slices(im1_dir, im2_dir, labels_dir, output_dir, tag1="A", tag2="B", 
                 compression=True,
             )
 
+
 def preprocess_mri(x):
     x_view = itk.array_view_from_image(x)
     x_view *= 255.0 / 280.0
     np.clip(x_view, a_min=0, a_max=255, out=x_view)
     return x
 
-
-def preprocess_ct(x):
-    # median filter for salt and pepper noise
-    x = itk.median_image_filter(x, radius=1)
-    # range clamped to [-1100, 3100] and scaled to [0, 255]
-    x_view = itk.array_view_from_image(x)
-    x_view += 1100
-    x_view *= 255.0 / (1100.0 + 3100.0)
-    np.clip(x_view, a_min=0, a_max=300, out=x_view)
-    return x
 
 if __name__ == "__main__":
 
@@ -88,12 +87,12 @@ if __name__ == "__main__":
     # print(pix.shape, pix.dtype)
 
     export_slices(
-        im1_dir=r"F:\Data\DRCMR-Thielscher\all_data\images", # T1
-        im2_dir=r"F:\Data\DRCMR-Thielscher\for_machine_learning\images", # CT
+        im1_dir=r"F:\Data\DRCMR-Thielscher\all_data\images",  # T1
+        im2_dir=r"F:\Data\DRCMR-Thielscher\for_machine_learning\images",  # CT
         labels_dir=r"F:\Data\DRCMR-Thielscher\all_data\labels_16",
         output_dir=r"F:\temp\t1w2ctm",
         tag1="t1w",
         tag2="ct",
         process_img1=preprocess_mri,
-        process_img2=preprocess_ct,
+        process_img2=scale_clamp_ct,
     )
