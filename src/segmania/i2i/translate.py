@@ -1,6 +1,8 @@
 import torch
+import torchvision.transforms as transforms
 import numpy as np
 import itk
+from torchvision.transforms.transforms import ToTensor
 
 from ..prepro.core import crop, scale_to_range, Image3
 
@@ -29,7 +31,7 @@ def load_pix2pix_generator(
 
     if isinstance(gen, torch.nn.DataParallel):
         gen = gen.module
-    print('loading the model from %s' % model_file_path)
+    print("loading the model from %s" % model_file_path)
 
     # if you are using PyTorch newer than 0.4, you can remove str() on self.device
     state_dict = torch.load(model_file_path, map_location=str(device))
@@ -69,45 +71,34 @@ def load_cyclegan_generator(model_file_path: str, gpu_ids: list = []):
     return gen
 
 
-def translate(img: np.ndarray, model: torch.nn.Module, device: torch.device):
+def translate(img: np.ndarray, model: torch.nn.Module, device: torch.device, count: int):
+    #tr = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,)),])
+    tr = transforms.Normalize((0.5,), (0.5,))
     with torch.no_grad():
-        fake = model(torch.from_numpy(img.reshape((1, 1) + img.shape)).to(device)).detach().cpu().numpy()
-    return fake.reshape(img.shape)
+        fake = (
+            model(tr(torch.from_numpy(img.reshape((1, 1) + img.shape))).to(device))
+            .detach()
+            .cpu()
+            .numpy()
+        ).reshape(img.shape)
+
+    itk.imwrite(itk.image_view_from_array(img), r"F:\temp\_real_MRI_%03d.nii.gz" % count)
+    itk.imwrite(itk.image_view_from_array(fake), r"F:\temp\_fake_CT_%03d.nii.gz" % count)
+    count += 1
+    return fake
 
 
-def preprocess_mri(x):
-    x_view = itk.array_view_from_image(x)
-    x_view *= 255.0 / 280.0
-    np.clip(x_view, a_min=0, a_max=255, out=x_view)
-    return x
-
-
-def translate_3d(image: Image3, model: torch.nn.Module, axis: int, device: torch.device):
-    imaget = itk.image_duplicator(image)
-    arr = itk.array_view_from_image(imaget, keep_axes=True)
+def translate_3d(
+    image: Image3, model: torch.nn.Module, axis: int, device: torch.device
+):
+    """Split 3D image along specified axis and do style transfer on each slice"""
+    arr = itk.array_from_image(image)
+    axis = 2-axis
     for k in range(arr.shape[axis]):
         if axis == 0:
-            arr[k, :, :] = translate(arr[k, :, :], model, device)
+            arr[k, :, :] = translate(arr[k, :, :], model, device, k)
         elif axis == 1:
-            arr[:, k, :] = translate(arr[:, k, :], model, device)
+            arr[:, k, :] = translate(arr[:, k, :], model, device, k)
         else:
-            arr[:, :, k] = translate(arr[:, :, k], model, device)
-    return imaget
-
-
-if __name__ == "__main__":
-    import itk
-
-    netg, device = load_pix2pix_generator(
-        model_file_path=r"E:\Develop\Scripts\ML-SEG\cyclegan\checkpoints\t1w2ctm\latest_net_G.pth",
-        #gpu_ids=[0]
-    )
-
-    img_t1 = itk.imread(r"F:\Data\DRCMR-Thielscher\all_data\images\X10679.nii.gz")
-
-    img_t1 = crop(preprocess_mri(img_t1), target_size=(256, 256, 10))
-
-    img_ct = translate_3d(img_t1, model=netg, axis=2, device=device)
-
-    itk.imwrite(img_t1, r"F:\temp\X10679_real_t1.nii.gz")
-    itk.imwrite(img_ct, r"F:\temp\X10679_fake_ct.nii.gz")
+            arr[:, :, k] = translate(arr[:, :, k], model, device, k)
+    return itk.image_view_from_array(arr)
