@@ -1,7 +1,8 @@
 import numpy as np
 import itk
 from typing import Union
-from core import as_array, AnyImage, Image2, Image3
+
+from .core import as_array, AnyImage, Image2, Image3
 
 
 def scale_clamp_ct(img: Union[Image2, Image3]):

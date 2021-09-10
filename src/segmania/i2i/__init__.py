@@ -1,1 +1,1 @@
-#from .translate_image import translate_3d
+from .translate import translate_3d
