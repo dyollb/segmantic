@@ -1,15 +1,13 @@
 import torch
 import numpy as np
-from pix2pix_cyclegan.models.networks import define_G
-import context
-from prepro.core import image_2d
-from typing import Union
-
 import itk
-image_3d = Union[itk.Image[itk.F,3], itk.Image[itk.D,3]]
+from pix2pix_cyclegan.models.networks import define_G
+from ..prepro.core import crop, scale_to_range, Image3
 
 
-def load_pix2pix_generator(model_file_path: str, gpu_ids: list = []):
+def load_pix2pix_generator(
+    model_file_path: str, gpu_ids: list = [], eval: bool = False
+):
     gen = define_G(
         input_nc=1,
         output_nc=1,
@@ -27,12 +25,20 @@ def load_pix2pix_generator(model_file_path: str, gpu_ids: list = []):
         torch.device("cuda:{}".format(gpu_ids[0])) if gpu_ids else torch.device("cpu")
     )
 
+    if isinstance(gen, torch.nn.DataParallel):
+        gen = gen.module
+    print('loading the model from %s' % model_file_path)
+
     # if you are using PyTorch newer than 0.4, you can remove str() on self.device
     state_dict = torch.load(model_file_path, map_location=str(device))
     if hasattr(state_dict, "_metadata"):
         del state_dict._metadata
     gen.load_state_dict(state_dict)
-    return gen
+
+    # dropout and batchnorm has different behavioir during training and test.
+    if eval:
+        gen.eval()
+    return gen, device
 
 
 def load_cyclegan_generator(model_file_path: str, gpu_ids: list = []):
@@ -61,34 +67,45 @@ def load_cyclegan_generator(model_file_path: str, gpu_ids: list = []):
     return gen
 
 
-def translate(img: torch.Tensor, model: torch.nn.Module):
-    return model(img)
+def translate(img: np.ndarray, model: torch.nn.Module, device: torch.device):
+    with torch.no_grad():
+        fake = model(torch.from_numpy(img.reshape((1, 1) + img.shape)).to(device)).detach().cpu().numpy()
+    return fake.reshape(img.shape)
 
 
-def translate(img: np.ndarray, model: torch.nn.Module):
-    return model(torch.from_numpy(img)).detach().cpu().numpy()
+def preprocess_mri(x):
+    x_view = itk.array_view_from_image(x)
+    x_view *= 255.0 / 280.0
+    np.clip(x_view, a_min=0, a_max=255, out=x_view)
+    return x
 
 
-def translate_3d(image: image_3d, model: torch.nn.Module, axis: int):
-    translate_slice = lambda x, m: translate(x.reshape((1, 1, x.shape[0], x.shape[1],)), m)
-    img = itk.array_from_image(image)
-    for k in range(img.shape[axis]):
+def translate_3d(image: Image3, model: torch.nn.Module, axis: int, device: torch.device):
+    imaget = itk.image_duplicator(image)
+    arr = itk.array_view_from_image(imaget, keep_axes=True)
+    for k in range(arr.shape[axis]):
         if axis == 0:
-            img[k, :, :] = translate_slice(img[k, :, :], model)
+            arr[k, :, :] = translate(arr[k, :, :], model, device)
         elif axis == 1:
-            img[:, k, :] = translate_slice(img[:, k, :], model)
+            arr[:, k, :] = translate(arr[:, k, :], model, device)
         else:
-            img[:, :, k] = translate_slice(img[:, :, k], model)
-    return image
+            arr[:, :, k] = translate(arr[:, :, k], model, device)
+    return imaget
 
 
 if __name__ == "__main__":
     import itk
 
-    netg = load_pix2pix_generator(r"E:\Develop\Scripts\ML-SEG\cyclegan\checkpoints\t1w2ctm\latest_net_G.pth")
+    netg, device = load_pix2pix_generator(
+        model_file_path=r"E:\Develop\Scripts\ML-SEG\cyclegan\checkpoints\t1w2ctm\latest_net_G.pth",
+        #gpu_ids=[0]
+    )
 
     img_t1 = itk.imread(r"F:\Data\DRCMR-Thielscher\all_data\images\X10679.nii.gz")
 
-    img_ct = translate_3d(img_t1, model=netg, axis=2)
+    img_t1 = crop(preprocess_mri(img_t1), target_size=(256, 256, 10))
 
-    #itk.imwrite(img_ct, r"F:\temp\X10679_fake_ct.nii.gz")
+    img_ct = translate_3d(img_t1, model=netg, axis=2, device=device)
+
+    itk.imwrite(img_t1, r"F:\temp\X10679_real_t1.nii.gz")
+    itk.imwrite(img_ct, r"F:\temp\X10679_fake_ct.nii.gz")
