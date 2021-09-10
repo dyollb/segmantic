@@ -76,10 +76,7 @@ def translate(img: np.ndarray, model: torch.nn.Module, device: torch.device):
     tr = transforms.Compose([transforms.Grayscale(1), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,)),])
     with torch.no_grad():
         fake = (
-            model(tr(img_p).to(device).view(1,1,256,256))
-            .detach()
-            .cpu()
-            .numpy()
+            model(tr(img_p).to(device).view(1, 1, 256, 256)).detach().cpu().numpy()
         ).reshape(img.shape)
     return fake
 
@@ -89,7 +86,7 @@ def translate_3d(
 ):
     """Split 3D image along specified axis and do style transfer on each slice"""
     arr = itk.array_from_image(image)
-    axis = 2-axis
+    axis = 2 - axis
     for k in range(arr.shape[axis]):
         if axis == 0:
             arr[k, :, :] = translate(arr[k, :, :], model, device)
