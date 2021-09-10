@@ -5,7 +5,7 @@
 from setuptools import setup, find_packages
 
 
-with open('README.rst') as f:
+with open('README.md') as f:
     readme = f.read()
 
 with open('LICENSE') as f:
@@ -20,6 +20,9 @@ setup(
     author_email='lloyd@itis.swiss',
     url='https://git.speag.com/lloyd/segmania.git',
     license=license,
-    packages=find_packages(exclude=('tests', 'docs'))
+    packages=find_packages(where="src"),
+    package_dir={
+        "": "src",
+    },
 )
 

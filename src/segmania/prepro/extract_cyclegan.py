@@ -3,7 +3,7 @@ import numpy as np
 import itk
 from random import randint
 from typing import List
-from .core import extract_slices, resample, scale_to_range, identity, any_image
+from .core import extract_slices, resample, scale_to_range, identity, AnyImage
 from .modality import scale_clamp_ct
 
 
@@ -73,7 +73,7 @@ def export_slices(
             )
 
 
-def scale_to_uchar(img: any_image):
+def scale_to_uchar(img: AnyImage):
     return scale_to_range(img, vmin=0, vmax=255)
 
 
