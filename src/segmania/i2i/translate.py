@@ -2,7 +2,6 @@ import torch
 import torchvision.transforms as transforms
 import numpy as np
 import itk
-from torchvision.transforms.transforms import ToTensor
 
 from ..prepro.core import crop, scale_to_range, Image3
 
@@ -71,20 +70,17 @@ def load_cyclegan_generator(model_file_path: str, gpu_ids: list = []):
     return gen
 
 
-def translate(img: np.ndarray, model: torch.nn.Module, device: torch.device, count: int):
-    #tr = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,)),])
-    tr = transforms.Normalize((0.5,), (0.5,))
+def translate(img: np.ndarray, model: torch.nn.Module, device: torch.device):
+    from PIL import Image
+    img_p = Image.fromarray(img).convert("RGB")
+    tr = transforms.Compose([transforms.Grayscale(1), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,)),])
     with torch.no_grad():
         fake = (
-            model(tr(torch.from_numpy(img.reshape((1, 1) + img.shape))).to(device))
+            model(tr(img_p).to(device).view(1,1,256,256))
             .detach()
             .cpu()
             .numpy()
         ).reshape(img.shape)
-
-    itk.imwrite(itk.image_view_from_array(img), r"F:\temp\_real_MRI_%03d.nii.gz" % count)
-    itk.imwrite(itk.image_view_from_array(fake), r"F:\temp\_fake_CT_%03d.nii.gz" % count)
-    count += 1
     return fake
 
 
@@ -96,9 +92,9 @@ def translate_3d(
     axis = 2-axis
     for k in range(arr.shape[axis]):
         if axis == 0:
-            arr[k, :, :] = translate(arr[k, :, :], model, device, k)
+            arr[k, :, :] = translate(arr[k, :, :], model, device)
         elif axis == 1:
-            arr[:, k, :] = translate(arr[:, k, :], model, device, k)
+            arr[:, k, :] = translate(arr[:, k, :], model, device)
         else:
-            arr[:, :, k] = translate(arr[:, :, k], model, device, k)
+            arr[:, :, k] = translate(arr[:, :, k], model, device)
     return itk.image_view_from_array(arr)
