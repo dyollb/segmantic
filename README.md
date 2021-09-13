@@ -10,7 +10,7 @@ Dependencies are listed in `requirements.txt`. It is advisable to install the pa
 cd /your/working/directory
 python -m venv .venv
 ```
-Activate it using e.g. `source .venv/bin/activate` on Linux/Mac and `.venv/bin/activate.bat` on Windows.
+Activate it using e.g. `source .venv/bin/activate` on Linux/Mac and `.venv\Scripts\activate.bat` on Windows.
 
 
 Then, to install this repo:
