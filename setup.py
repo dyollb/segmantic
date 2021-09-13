@@ -23,6 +23,7 @@ def get_cuda_version():
         if "CUDA Version:" in line:
             line = line.rsplit("CUDA Version:", 1)[1].strip()
             version = line.split(" ", 1)[0].strip().split(".")
+            print("\nDetected CUDA version: %s.%s\n" % (version[0], version[1]))
             return [int(v) for v in version]
     return [0, 0]
 
@@ -50,6 +51,7 @@ setup(
     author_email='lloyd@itis.swiss',
     url='https://github.com/dyollb/segmantic.git',
     license=license,
+    install_requires=install_requirements,
     packages=find_packages(where="src"),
     package_dir={
         "": "src",
