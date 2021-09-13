@@ -19,10 +19,10 @@ See training and test tips at: https://github.com/junyanz/pytorch-CycleGAN-and-p
 See frequently asked questions at: https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix/blob/master/docs/qa.md
 """
 import time
-from segmania.i2i.pix2pix_cyclegan.options.train_options import TrainOptions
-from segmania.i2i.pix2pix_cyclegan.data import create_dataset
-from segmania.i2i.pix2pix_cyclegan.models import create_model
-from segmania.i2i.pix2pix_cyclegan.util.visualizer import Visualizer
+from segmantic.i2i.pix2pix_cyclegan.options.train_options import TrainOptions
+from segmantic.i2i.pix2pix_cyclegan.data import create_dataset
+from segmantic.i2i.pix2pix_cyclegan.models import create_model
+from segmantic.i2i.pix2pix_cyclegan.util.visualizer import Visualizer
 
 if __name__ == '__main__':
     opt = TrainOptions().parse()   # get training options

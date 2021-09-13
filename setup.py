@@ -12,13 +12,13 @@ with open('LICENSE') as f:
     license = f.read()
 
 setup(
-    name='segmania',
+    name='segmantic',
     version='0.1.0',
     description='Collection of tools for ML-based semantic image segmentation',
     long_description=readme,
     author='Bryn Lloyd',
     author_email='lloyd@itis.swiss',
-    url='https://git.speag.com/lloyd/segmania.git',
+    url='https://github.com/dyollb/segmantic.git',
     license=license,
     packages=find_packages(where="src"),
     package_dir={

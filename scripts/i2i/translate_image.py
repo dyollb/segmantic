@@ -2,8 +2,8 @@ import numpy as np
 import itk
 import argparse
 
-from segmania.prepro.core import crop
-from segmania.i2i.translate import load_pix2pix_generator, translate_3d
+from segmantic.prepro.core import crop
+from segmantic.i2i.translate import load_pix2pix_generator, translate_3d
 
 
 def preprocess_mri(x):
