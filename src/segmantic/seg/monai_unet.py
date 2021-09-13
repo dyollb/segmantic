@@ -263,8 +263,10 @@ class Net(pytorch_lightning.LightningModule):
             {"image": image_name, "label": label_name}
             for image_name, label_name in zip(train_images, train_labels)
         ]
-        train_files, val_files = data_dicts[:-6], data_dicts[-6:]
-        # train_files, val_files = data_dicts[:1], data_dicts[1:3]
+
+        # use first 4 files for validation, rest for training
+        # todo: make this configurable/not hard-coded
+        train_files, val_files = data_dicts[4:], data_dicts[:4]
 
         # set deterministic training for reproducibility
         set_determinism(seed=0)
@@ -381,7 +383,7 @@ def train(
 
     # initialise Lightning's trainer.
     # other options:
-    #  - precision=16 (todo)
+    #  - precision=16 (todo: evaluate speed-up)
     #  - max_time={"days": 1, "hours": 5}
     trainer = pytorch_lightning.Trainer(
         gpus=[0],
@@ -544,7 +546,7 @@ def get_nifti_files(dir):
     if not dir:
         return []
     return sorted([os.path.join(dir, f) for f in os.listdir(dir) if f.endswith(".nii.gz")])
-    
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train and predict.')
