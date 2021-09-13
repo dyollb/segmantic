@@ -50,6 +50,7 @@ setup(
     author_email='lloyd@itis.swiss',
     url='https://github.com/dyollb/segmantic.git',
     license=license,
+    install_requires=install_requirements,
     packages=find_packages(where="src"),
     package_dir={
         "": "src",
