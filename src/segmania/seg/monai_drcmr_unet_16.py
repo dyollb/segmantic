@@ -36,10 +36,12 @@ import os
 import glob
 import json
 import argparse
-from map_labels import load_tissue_list
+
+from segmania.prepro.labels import load_tissue_list
 
 
-def make_cmap(num_classes):
+def make_random_cmap(num_classes):
+    '''Make a random color map for <num_classes> different classes'''
     def random_color(l, max_label):
         if l == 0:
             return (0, 0, 0)
@@ -425,7 +427,7 @@ def train(
                 val_data["image"].to(device), roi_size, sw_batch_size, net
             )
 
-            cmap = make_cmap(num_classes + 1)
+            cmap = make_random_cmap(num_classes + 1)
 
             plt.figure("check", (18, 6))
             for row, slice in enumerate([80, 180]):
