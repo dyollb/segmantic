@@ -103,6 +103,9 @@ def crop(img: AnyImage, target_size: tuple = (256, 256)):
     if any(delta):
         crop_low = [(d + 1) // 2 for d in delta]
         crop_hi = [delta[i] - p for i, p in enumerate(crop_low)]
+        print(size)
+        print(crop_low)
+        print(crop_hi)
         img = itk.crop_image_filter(
             img,
             lower_boundary_crop_size=crop_low,
