@@ -15,13 +15,19 @@ Activate it using e.g. `source .venv/bin/activate` on Linux/Mac and `.venv\Scrip
 
 Then, to install this repo:
 ```
-pip install git+https://github.com/dyollb/segmantic.git
+pip install git+https://github.com/dyollb/segmantic.git#egg=segmantic
 ```
 
 Or in edit mode:
 ```
-pip install -e git+https://github.com/dyollb/segmantic.git
+pip install -e git+https://github.com/dyollb/segmantic.git#egg=segmantic
 ```
+
+Or, if you need access tokens:
+```
+pip install -e git+https://<user_name>:<access_token>@github.com/dyollb/segmantic.git#egg=segmantic
+```
+
 
 
 ## Example scripts
