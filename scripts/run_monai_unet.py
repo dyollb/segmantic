@@ -36,8 +36,8 @@ if __name__ == "__main__":
     if args.predict:
         predict(
             model_file=model_file,
-            test_labels=get_nifti_files(args.image_dir),
-            test_images=get_nifti_files(args.labels_dir),
+            test_images=get_nifti_files(args.image_dir),
+            test_labels=get_nifti_files(args.labels_dir),
             tissue_dict=tissue_dict,
             output_dir=args.results_dir,
             save_nifti=True,
