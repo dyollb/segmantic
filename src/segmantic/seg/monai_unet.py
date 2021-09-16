@@ -468,10 +468,10 @@ def predict(
     # todo: clean this
     num_classes = max(tissue_dict.keys()) + 1
 
-    with open(model_file.rsplit(".", 1)[0] + ".json") as json_file:
-        settings = json.load(json_file)
+    #with open(model_file.rsplit(".", 1)[0] + ".json") as json_file:
+    #    settings = json.load(json_file)
 
-    net = Net.load_from_checkpoint(model_file, n_classes=settings["num_classes"])
+    net = Net.load_from_checkpoint(model_file, n_classes=num_classes) #settings["num_classes"])
 
     net.eval()
     device = torch.device("cuda:0")

@@ -17,14 +17,16 @@ def read_reqs(reqs_path: Path):
 
 
 def get_cuda_version():
-    out = check_output(["nvidia-smi"]).decode("utf-8").split("\n")
-
-    for line in out:
-        if "CUDA Version:" in line:
-            line = line.rsplit("CUDA Version:", 1)[1].strip()
-            version = line.split(" ", 1)[0].strip().split(".")
-            print("\nDetected CUDA version: %s.%s\n" % (version[0], version[1]))
-            return [int(v) for v in version]
+    try:
+        out = check_output(["nvidia-smi"]).decode("utf-8").split("\n")
+        for line in out:
+            if "CUDA Version:" in line:
+                line = line.rsplit("CUDA Version:", 1)[1].strip()
+                version = line.split(" ", 1)[0].strip().split(".")
+                print("\nDetected CUDA version: %s.%s\n" % (version[0], version[1]))
+                return [int(v) for v in version]
+    except:
+        pass
     return [0, 0]
 
 
@@ -43,13 +45,13 @@ with open("LICENSE") as f:
     license = f.read()
 
 setup(
-    name='segmantic',
-    version='0.1.0',
-    description='Collection of tools for ML-based semantic image segmentation',
+    name="segmantic",
+    version="0.1.0",
+    description="Collection of tools for ML-based semantic image segmentation",
     long_description=readme,
-    author='Bryn Lloyd',
-    author_email='lloyd@itis.swiss',
-    url='https://github.com/dyollb/segmantic.git',
+    author="Bryn Lloyd",
+    author_email="lloyd@itis.swiss",
+    url="https://github.com/dyollb/segmantic.git",
     license=license,
     install_requires=install_requirements,
     packages=find_packages(where="src"),
