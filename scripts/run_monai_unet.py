@@ -20,7 +20,7 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--results_dir', dest='results_dir', default='.', type=str, help='results directory')
     parser.add_argument('--tissue_list', type=str, required=True, help='file containing label descriptors')
     parser.add_argument('--predict', action='store_true', help='run prediction')
-    parser.add_argument('--gpu_ids', nargs="+", type=int, help='space seperated list of GPU ids', default=[0])
+    parser.add_argument('--gpu_ids', nargs="+", type=int, help='space seperated list of GPU ids, -1 is for CPU', default=[0])
     args = parser.parse_args()
 
     print_config()
