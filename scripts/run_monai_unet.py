@@ -20,6 +20,7 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--results_dir', dest='results_dir', default='.', type=str, help='results directory')
     parser.add_argument('--tissue_list', type=str, required=True, help='file containing label descriptors')
     parser.add_argument('--predict', action='store_true', help='run prediction')
+    parser.add_argument('--gpu_ids', nargs="+", type=int, help='space seperated list of GPU ids', default=[0])
     args = parser.parse_args()
 
     print_config()
@@ -41,6 +42,7 @@ if __name__ == "__main__":
             tissue_dict=tissue_dict,
             output_dir=args.results_dir,
             save_nifti=True,
+            gpu_ids=args.gpu_ids,
         )
     else:
         train(
@@ -51,4 +53,5 @@ if __name__ == "__main__":
             model_file_name=model_file,
             max_epochs=600,
             output_dir=args.results_dir,
+            gpu_ids=args.gpu_ids,
         )

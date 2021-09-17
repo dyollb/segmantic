@@ -14,7 +14,9 @@ from monai.transforms import (
     NormalizeIntensityd,
     EnsureTyped,
     EnsureType,
-    Activations,
+    Activationsd,
+    SaveImaged,
+    Invertd,
 )
 from monai.networks.nets import UNet
 from monai.networks.layers import Norm
@@ -35,13 +37,13 @@ import random
 import os
 import glob
 import json
-import argparse
 
 from segmantic.prepro.labels import load_tissue_list
 
 
 def make_random_cmap(num_classes):
-    '''Make a random color map for <num_classes> different classes'''
+    """Make a random color map for <num_classes> different classes"""
+
     def random_color(l, max_label):
         if l == 0:
             return (0, 0, 0)
@@ -145,7 +147,7 @@ def plot_confusion_matrix(
     if normalize:
         cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
 
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(16, 16))
     plt.imshow(cm, interpolation="nearest", cmap=cmap)
     plt.title(title)
     plt.colorbar()
@@ -220,6 +222,18 @@ def create_transforms(keys, train=False, num_classes=0, spacing=None):
                 )
             )
     return Compose(xforms + [EnsureTyped(keys=keys)])
+
+
+
+def make_device(gpu_ids: list):
+    # use by default if none specified
+    if not gpu_ids and torch.cuda.is_available():
+        gpu_ids = [0]
+    # negative index means no gpu
+    if not gpu_ids or gpu_ids[0] < 0:
+        return torch.device("cpu")
+    # use gpu
+    return torch.device("cuda:{}".format(gpu_ids[0]))
 
 
 class Net(pytorch_lightning.LightningModule):
@@ -365,6 +379,7 @@ def train(
     model_file_name: str,
     max_epochs: int = 600,
     output_dir=None,
+    gpu_ids: list = [],
 ):
     """Run the training"""
 
@@ -386,7 +401,7 @@ def train(
     #  - precision=16 (todo: evaluate speed-up)
     #  - max_time={"days": 1, "hours": 5}
     trainer = pytorch_lightning.Trainer(
-        gpus=[0],
+        gpus=gpu_ids,
         max_epochs=max_epochs,
         logger=tb_logger,
         callbacks=[checkpoint_callback],
@@ -419,7 +434,7 @@ def train(
         saver = NiftiSaver(output_dir=output_dir, separate_folder=False, resample=False)
 
     net.eval()
-    device = torch.device("cuda:0")
+    device = make_device(gpu_ids)
     net.to(device)
     with torch.no_grad():
         for i, val_data in enumerate(net.val_dataloader()):
@@ -464,19 +479,20 @@ def predict(
     tissue_dict: dict = None,
     output_dir: str = None,
     save_nifti: bool = False,
+    gpu_ids: list = []
 ):
-    # todo: clean this
-    num_classes = max(tissue_dict.keys()) + 1
+    # load trained model
+    with open(model_file.rsplit(".", 1)[0] + ".json") as json_file:
+        settings = json.load(json_file)
+        num_classes = settings["num_classes"]
 
-    #with open(model_file.rsplit(".", 1)[0] + ".json") as json_file:
-    #    settings = json.load(json_file)
-
-    net = Net.load_from_checkpoint(model_file, n_classes=num_classes) #settings["num_classes"])
+    net = Net.load_from_checkpoint(model_file, n_classes=num_classes)
 
     net.eval()
-    device = torch.device("cuda:0")
+    device = make_device(gpu_ids)
     net.to(device)
 
+    # define data / data loader
     if test_labels:
         test_files = [
             {"image": i, "label": l} for i, l in zip(test_images, test_labels)
@@ -484,13 +500,15 @@ def predict(
     else:
         test_files = [{"image": i} for i in test_images]
 
+    pre_transforms = create_transforms(
+        keys=["image", "label"] if test_labels else ["image"],
+        train=False,
+        spacing=(0.85, 0.85, 0.85),
+    )
+
     test_ds = CacheDataset(
         data=test_files,
-        transform=create_transforms(
-            keys=["image", "label"] if test_labels else ["image"],
-            train=False,
-            spacing=(0.85, 0.85, 0.85),
-        ),
+        transform=pre_transforms,
         cache_rate=1.0,
         num_workers=0,
     )
@@ -498,10 +516,48 @@ def predict(
     test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, num_workers=0)
 
     # for saving output
-    if output_dir:
+    save_transforms = []
+    if save_nifti and output_dir:
         os.makedirs(output_dir, exist_ok=True)
-        saver = NiftiSaver(output_dir=output_dir, separate_folder=False, resample=False)
+        save_transforms.append(
+            SaveImaged(
+                keys="pred",
+                meta_keys="pred_meta_dict",
+                output_dir=output_dir,
+                output_postfix="seg",
+                resample=False,
+                separate_folder=False,
+            )
+        )
 
+    # invert transforms (e.g. cropping)
+    post_transforms = Compose(
+        [
+            EnsureTyped(keys="pred"),
+            # Activationsd(keys="pred", sigmoid=True),
+            Invertd(
+                keys="pred",  # invert the `pred` data field, also support multiple fields
+                transform=pre_transforms,
+                orig_keys="image",  # get the previously applied pre_transforms information on the `img` data field,
+                # then invert `pred` based on this information. we can use same info
+                # for multiple fields, also support different orig_keys for different fields
+                meta_keys="pred_meta_dict",  # key field to save inverted meta data, every item maps to `keys`
+                orig_meta_keys="image_meta_dict",  # get the meta data from `img_meta_dict` field when inverting,
+                # for example, may need the `affine` to invert `Spacingd` transform,
+                # multiple fields can use the same meta data to invert
+                meta_key_postfix="meta_dict",  # if `meta_keys=None`, use "{keys}_{meta_key_postfix}" as the meta key,
+                # if `orig_meta_keys=None`, use "{orig_keys}_{meta_key_postfix}",
+                # otherwise, no need this arg during inverting
+                nearest_interp=False,  # don't change the interpolation mode to "nearest" when inverting transforms
+                # to ensure a smooth output, then execute `AsDiscreted` transform
+                to_tensor=True,  # convert to PyTorch Tensor after inverting
+            ),
+            AsDiscreted(keys="pred", argmax=True),
+        ]
+        + save_transforms
+    )
+
+    # evaluate accuracy
     dice_metric = DiceMetric(
         include_background=False, reduction="mean", get_not_nans=False
     )
@@ -517,15 +573,19 @@ def predict(
             tissue_names[idx] = tissue_dict[idx]
 
     with torch.no_grad():
-        for i, test_data in enumerate(test_loader):
+        for test_data in test_loader:
             val_image = test_data["image"].to(device)
 
-            roi_size = (96, 96, 96)
-            sw_batch_size = 4
-            val_pred = sliding_window_inference(val_image, roi_size, sw_batch_size, net)
-            val_pred = val_pred.argmax(dim=1, keepdim=True)
+            val_pred = sliding_window_inference(
+                inputs=val_image, roi_size=(96, 96, 96), sw_batch_size=4, predictor=net
+            )
+            
+            test_data["pred"] = val_pred
+            for i in decollate_batch(test_data):
+                post_transforms(i)
 
             if test_labels:
+                val_pred = val_pred.argmax(dim=1, keepdim=True)
                 val_labels = test_data["label"].to(device)
 
                 d = dice_metric(y_pred=to_one_hot(val_pred), y=to_one_hot(val_labels))
@@ -536,15 +596,17 @@ def predict(
                 conf_matrix(y_pred=to_one_hot(val_pred), y=to_one_hot(val_labels))
                 print("Conf. Matrix Metrics = ", conf_matrix.aggregate())
 
-                c = compute_confusion(y_pred=val_pred, y=val_labels)
-                # print("Conf. Matrix = ", c)
-                plot_confusion_matrix(c, tissue_names)
-
-            if save_nifti and output_dir:
-                saver.save_batch(val_pred, test_data["image_meta_dict"])
+                filename_or_obj = test_data["image_meta_dict"]["filename_or_obj"]
+                if filename_or_obj:
+                    base = os.path.basename(filename_or_obj[0]).split(".", 1)[0]
+                    c = compute_confusion(y_pred=val_pred, y=val_labels)
+                    # print("Conf. Matrix = ", c)
+                    plot_confusion_matrix(c, tissue_names, file_name=os.path.join(output_dir, base + "_confusion.png"))
 
 
 def get_nifti_files(dir):
     if not dir:
         return []
-    return sorted([os.path.join(dir, f) for f in os.listdir(dir) if f.endswith(".nii.gz")])
+    return sorted(
+        [os.path.join(dir, f) for f in os.listdir(dir) if f.endswith(".nii.gz")]
+    )
