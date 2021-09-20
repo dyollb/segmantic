@@ -22,7 +22,8 @@ theme:
 nav:
   - Home: "index.md"
   - Usage Examples:
-      - Pydantic: "examples/pydantic.ipynb"
+      - CycleGAN: "examples/CycleGAN.ipynb"
+      - pix2pix: "examples/pix2pix.ipynb"
 
 
 plugins:
