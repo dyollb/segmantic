@@ -1,3 +1,32 @@
-site_name: My Docs
+site_name: Segmatic
+site_description: Automatic segmentation tools
+repo_url: https://github.com/dyollb/segmantic
+
 theme:
   name: material
+  features:
+    - navigation.top
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/lightbulb
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/lightbulb-outline
+        name: Switch to light mode
+
+
+nav:
+  - Home: "index.md"
+  - Usage Examples:
+      - Pydantic: "examples/pydantic.ipynb"
+
+
+plugins:
+  - search
+  - mkdocs-jupyter
+
+
