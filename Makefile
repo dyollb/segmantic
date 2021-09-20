@@ -13,3 +13,9 @@ test:
 		wheel \
 		setuptools
 	@echo "To activate the venv, execute 'source .venv/bin/activate'"
+
+.PHONY: docs
+docs:
+	pip install -r requirements/docs.txt
+	mkdocs build
+	mkdocs serve
