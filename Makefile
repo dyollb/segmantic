@@ -15,7 +15,7 @@ test:
 	@echo "To activate the venv, execute 'source .venv/bin/activate'"
 
 .PHONY: docs
-docs:
+docs: .venv
 	pip install -r requirements/docs.txt
 	mkdocs build
 	mkdocs serve
