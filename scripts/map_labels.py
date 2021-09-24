@@ -3,7 +3,7 @@ import numpy as np
 import itk
 import argparse
 
-from segmantic.prepro.labels import save_tissue_list, build_map
+from segmantic.prepro.labels import load_tissue_list, save_tissue_list, build_tissue_mapping
 
 
 drcmr_labels_16 = [
@@ -62,10 +62,25 @@ def map_vessels2other(name: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Map labels.')
     parser.add_argument('-i', '--input_dir', dest='in_dir', type=str, required=True, help='input directory')
-    parser.add_argument('-o', '--output_dir', dest='out_dir', type=str, help='output directory')
+    parser.add_argument('-o', '--output_dir', dest='out_dir', type=str, required=True, help='output directory')
+    parser.add_argument('--input_tissues', dest='input_tissues', type=str, help='input tissue list')
+    parser.add_argument('--output_tissues', dest='output_tissues', type=str, required=True, help='output tissue list')
     args = parser.parse_args()
 
-    imap, omap, i2o = build_map(drcmr_labels_16, map_bone_skin_air_fg_bg)
+    # get input and output tissue lists
+    if args.input_tissues:
+        imap = load_tissue_list(args.input_tissues)
+    else:
+        imap = {n: i for i, n in enumerate(drcmr_labels_16)}
+
+    if os.path.exists(args.output_tissues):
+        omap = load_tissue_list(args.output_tissues)
+        mapper = lambda name: omap[name]
+    elif args.output_tissues in locals():
+        mapper = locals()[args.output_tissues]
+
+    # build index mapping from input to output
+    omap, i2o = build_tissue_mapping(imap, mapper)
 
     os.makedirs(args.out_dir, exist_ok=True)
     save_tissue_list(omap, os.path.join(args.out_dir, "labels_5.txt"))
