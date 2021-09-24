@@ -3,9 +3,21 @@ name: CI
 on:
   workflow_dispatch:
   push:
-      branches: [ main ]
+    branches: [ main ]
+    paths-ignore:
+      - "*.md"
+      - "*.png"
+      - "*.svg"
+      - "docs/**"
+      - ".vscode/**"
   pull_request:
-      branches: [ main ]
+    branches: [ main ]
+    paths-ignore:
+      - "*.md"
+      - "*.png"
+      - "*.svg"
+      - "docs/**"
+      - ".vscode/**"
 
 jobs:
   build-and-test:
@@ -14,13 +26,13 @@ jobs:
       - uses: actions/checkout@v2
         with:
           path: segmantic_src
-      - name: setup
-        run: |
-          sudo apt-get update
-          sudo apt install -y python3-setuptools python3-pip
-          python -m pip install mypy
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.6
       - name: pip install
-        run: python3 -m pip install -e segmantic_src
+        run: pip install -e segmantic_src
       - name: test
         working-directory: segmantic_src
-        run: python3 -m unittest discover
+        run: |
+          pip install pytest
+          pytest tests
