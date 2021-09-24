@@ -67,7 +67,7 @@ def make_random_cmap(num_classes):
     return colors.ListedColormap(col)
 
 
-def compute_confusion_naive(num_classes, y_pred, y):
+def compute_confusion(num_classes: int, y_pred: torch.Tensor, y: torch.Tensor):
     """
     Compute confusion matrix similar to sklearn.metrics.confusion_matrix
 
@@ -75,10 +75,23 @@ def compute_confusion_naive(num_classes, y_pred, y):
     y_pred:         predicted labels
     y:              true labels
     """
-    confusion_matrix = torch.zeros(num_classes, num_classes)
-    for t, p in zip(y.view(-1), y_pred.view(-1)):
-        confusion_matrix[t.long(), p.long()] += 1
-    return confusion_matrix
+    try:
+        from numba import njit
+
+        @njit
+        def compute_confusion_numba(num_classes: int, y_pred: np.ndarray, y: np.ndarray):
+            cm = np.zeros(num_classes, num_classes)
+            for t, p in zip(y_pred, y):
+                cm[t, p] += 1
+            return cm
+
+        return compute_confusion_numba(num_classes, y_pred.view(-1).cpu().numpy(), y.view(-1).cpu().numpy())
+    except:
+        # fall back to naive approach
+        cm = np.zeros(num_classes, num_classes)
+        for t, p in zip(y_pred.view(-1), y.view(-1)):
+            cm[t, p] += 1
+    return cm
 
 
 def compute_confusion(y_pred, y):
