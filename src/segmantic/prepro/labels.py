@@ -1,5 +1,6 @@
 import numpy as np
 import colorsys
+from typing import Dict
 
 
 def build_map(input_label_names, mapper):
@@ -20,6 +21,12 @@ def build_map(input_label_names, mapper):
 
 
 def save_tissue_list(output_label_map:dict, tissue_list_file_name:str):
+    '''save tissue list in iSEG format
+
+        Example:
+        from segmantic.prepro import labels
+        labels.save_tissue_list({ 'Bone': 1, 'Fat': 2, 'Skin': 3 }, 'tissues.txt')
+    '''
     with open(tissue_list_file_name, "w") as f:
         num_tissues = max(output_label_map.values())
         label_tissue_map = {}
@@ -40,7 +47,16 @@ def save_tissue_list(output_label_map:dict, tissue_list_file_name:str):
             print("C%.2f %.2f %.2f %.2f %s" % (r,g,b, 0.5, label_tissue_map[label]), file=f)
 
 
-def load_tissue_list(file_name) -> dict:
+def load_tissue_list(file_name) -> Dict[int,str]:
+    '''load tissue list in iSEG format
+
+        Example file:
+            V7
+            N3
+            C0.00 0.00 1.00 0.50 Bone
+            C0.00 1.00 0.00 0.50 Fat
+            C1.00 0.00 0.00 0.50 Skin
+    '''
     tissues = { 0: "Background" }
     with open(file_name) as f:
         for line in f.readlines():
