@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+      branches: [ main ]
+  pull_request:
+      branches: [ main ]
+
+jobs:
+  build-and-test:
+      runs-on: ubuntu-18.04
+      steps:
+      - uses: actions/checkout@v2
+        with:
+          path: segmantic_src
+      - name: pip install
+        run: python -m pip install -e segmantic_src
+      - name: test
+        working-directory: segmantic_src
+        run: python -m unittest discover
