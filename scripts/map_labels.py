@@ -2,6 +2,7 @@ import os
 import numpy as np
 import itk
 import argparse
+from pathlib import Path
 
 from segmantic.prepro.labels import load_tissue_list, save_tissue_list, build_tissue_mapping
 
@@ -61,10 +62,10 @@ def map_vessels2other(name: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Map labels.')
-    parser.add_argument('-i', '--input_dir', dest='in_dir', type=str, required=True, help='input directory')
-    parser.add_argument('-o', '--output_dir', dest='out_dir', type=str, required=True, help='output directory')
-    parser.add_argument('--input_tissues', dest='input_tissues', type=str, help='input tissue list')
-    parser.add_argument('--output_tissues', dest='output_tissues', type=str, required=True, help='output tissue list')
+    parser.add_argument('-i', '--input_dir', dest='input_dir', type=Path, required=True, help='input directory')
+    parser.add_argument('-o', '--output_dir', dest='output_dir', type=Path, required=True, help='output directory')
+    parser.add_argument('--input_tissues', dest='input_tissues', type=Path, help='input tissue list file')
+    parser.add_argument('--output_tissues', dest='output_tissues', type=Path, required=True, help='output tissue list file')
     args = parser.parse_args()
 
     # get input and output tissue lists
@@ -82,16 +83,16 @@ if __name__ == "__main__":
     # build index mapping from input to output
     omap, i2o = build_tissue_mapping(imap, mapper)
 
-    os.makedirs(args.out_dir, exist_ok=True)
-    save_tissue_list(omap, os.path.join(args.out_dir, "labels_5.txt"))
+    os.makedirs(args.output_dir, exist_ok=True)
+    save_tissue_list(omap, os.path.join(args.output_dir, "labels_5.txt"))
 
-    for f in os.listdir(args.in_dir):
+    for f in os.listdir(args.input_dir):
         if not f.endswith(".nii.gz"):
             continue
 
-        image = itk.imread(os.path.join(args.in_dir, f))
+        image = itk.imread(os.path.join(args.input_dir, f))
         image[:] = i2o[image[:]]
 
         assert len(np.unique(image)) == np.max(image) + 1
 
-        itk.imwrite(image, os.path.join(args.out_dir, f))
+        itk.imwrite(image, os.path.join(args.output_dir, f))

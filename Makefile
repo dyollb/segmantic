@@ -1,10 +1,12 @@
-.PHONY: init test
+.PHONY: test init init-dev
 
-init:
-	pip install -r requirements.txt
+init: .venv
 
-test:
-	py.test tests
+init-dev: init
+	pip --quiet install -r requirements/dev.txt
+
+test: init-dev
+	pytest tests
 
 .venv: # creates virtual environment (detectable by vscode)
 	python3 -m venv $@
@@ -15,7 +17,7 @@ test:
 	@echo "To activate the venv, execute 'source .venv/bin/activate'"
 
 .PHONY: docs
-docs:
+docs: .venv
 	pip install -r requirements/docs.txt
 	mkdocs build
 	mkdocs serve
