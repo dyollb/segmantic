@@ -3,22 +3,21 @@ import os
 import numpy as np
 import itk
 from pathlib import Path
-from typing import Any, List, Optional, Sequence, Union, Callable
-
+from typing import List, Optional, Sequence, Union, Callable
 
 # frequently used types
 from itk.itkImagePython import itkImageBase2 as Image2
 from itk.itkImagePython import itkImageBase3 as Image3
 from itk.support.types import ImageLike as AnyImage
-ImageNd = Union[Image2, Image3]
-PathLike = Union[str, Path]
+itkImage = Union[Image2, Image3]
+ImageOrArray = Union[Image2, Image3, np.ndarray]
 
 
 def identity(x: AnyImage) -> AnyImage:
     return x
 
 
-def as_image(x: AnyImage) -> ImageNd:
+def as_image(x: AnyImage) -> AnyImage:
     if isinstance(x, np.ndarray):
         return itk.image_view_from_array(x)
     return x
@@ -53,7 +52,7 @@ def scale_to_range(img: AnyImage, vmin: float = 0.0, vmax: float = 255.0) -> Any
     return img
 
 
-def resample(img: ImageNd, target_spacing: Optional[Sequence] = None) -> ImageNd:
+def resample(img: itkImage, target_spacing: Optional[Sequence] = None) -> itkImage:
     """resample N-D itk.Image to a fixed spacing (default:0.85)"""
     dim = img.GetImageDimension()
     interpolator = itk.LinearInterpolateImageFunction.New(img)

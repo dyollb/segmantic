@@ -21,23 +21,38 @@ on:
 
 jobs:
   build-and-test:
+      name: python ${{ matrix.python-version }}
       runs-on: ubuntu-18.04
+      strategy:
+        max-parallel: 4
+        matrix:
+          python-version: [3.6]
       steps:
       - uses: actions/checkout@v2
         with:
           path: segmantic_src
       - uses: actions/setup-python@v2
         with:
-          python-version: 3.6
-      - name: pip install
+          python-version: ${{ matrix.python-version }}
+      - name: Pip cache
+        uses: actions/cache@v2
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-{{ matrix.python-version }}
+          restore-keys: |
+            ${{ runner.os }}-pip
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+      - name: Pip install
         run: pip install -e segmantic_src
-      - name: test
+      - name: Test
         working-directory: segmantic_src
         run: |
           pip install pytest
           pytest tests
-      - name: static analysis
+      - name: Static analysis
         working-directory: segmantic_src
         run: |
-          npm install pyright
+          npm install --global pyright
           pyright
