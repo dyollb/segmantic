@@ -5,6 +5,8 @@
         "scripts/"
     ],
     "exclude": [
+        "**/pix2pix_cyclegan",
+        "**/seg/"
     ],
     "useLibraryCodeForTypes": true,
 }
