@@ -5,7 +5,7 @@ from typing import Union
 from .core import as_array, AnyImage, Image2, Image3
 
 
-def scale_clamp_ct(img: Union[Image2, Image3]):
+def scale_clamp_ct(img: Union[Image2, Image3]) -> AnyImage:
     """Prepare CT images: median -> clamp to [-1100,3100] -> scale to [0,255]"""
     # median filter for salt and pepper noise
     img = itk.median_image_filter(img, radius=1)
@@ -18,7 +18,7 @@ def scale_clamp_ct(img: Union[Image2, Image3]):
     return img
 
 
-def unscale_ct(img: AnyImage):
+def unscale_ct(img: AnyImage) -> AnyImage:
     """Invert 'scale_clamp_ct' operation, except for clamping"""
     img_view = as_array(img)
     np.multiply(img_view, (1100.0 + 3100.0) / 255.0, out=img_view, casting="unsafe")

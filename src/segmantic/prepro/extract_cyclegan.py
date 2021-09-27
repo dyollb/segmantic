@@ -2,13 +2,13 @@ import os
 import numpy as np
 import itk
 from random import randint
-from typing import List
+from typing import List, Tuple
 
-from .core import extract_slices, resample, scale_to_range, identity, AnyImage
+from .core import extract_slices, resample, scale_to_range, identity, get_files, AnyImage, Image2
 from .modality import scale_clamp_ct
 
 
-def bbox(img):
+def bbox(img: Image2) -> Tuple[float, float, float, float]:
     """Get foreground (non-zero) bounding box from 2D image"""
     rows = np.any(img, axis=1)
     cols = np.any(img, axis=0)
@@ -23,7 +23,7 @@ def export_slices(
     axis: int = 0,
     flip_lr: bool = False,
     process_img=identity,
-):
+) -> None:
     """Load list of 3D images and extract & export slices"""
     # create folders for output
     os.makedirs(output_dir, exist_ok=True)
@@ -74,17 +74,11 @@ def export_slices(
             )
 
 
-def scale_to_uchar(img: AnyImage):
+def scale_to_uchar(img: AnyImage) -> AnyImage:
     return scale_to_range(img, vmin=0, vmax=255)
 
 
-def get_files(dir: str, cond=lambda x: True, ext: str = ".nii.gz"):
-    return [
-        os.path.join(dir, f) for f in os.listdir(dir) if f.endswith(ext) and cond(f)
-    ]
-
-
-def convert_to_rgb(files: List[str]):
+def convert_to_rgb(files: List[str]) -> None:
     from PIL import Image
 
     for f in files:
@@ -95,7 +89,7 @@ def convert_to_rgb(files: List[str]):
         imgc.close()
 
 
-def randomize_files(dir: str, ext: str = ".tif"):
+def randomize_files(dir: str, ext: str = ".tif") -> None:
     import shutil
     from random import sample
 
@@ -110,7 +104,7 @@ if __name__ == "__main__":
 
     t1_images = get_files(r"F:\Data\DRCMR-Thielscher\all_data\images")
     ixi_t1_images = get_files(
-        r"C:\Users\lloyd\Downloads\IXI-T1", cond=lambda x: "Guys" in x
+        r"C:\Users\lloyd\Downloads\IXI-T1", predicate=lambda x: "Guys" in x
     )
 
     # export_slices(
@@ -140,5 +134,5 @@ if __name__ == "__main__":
         axis=1,
         flip_lr=True,
     )
-    convert_to_rgb(get_files(r"F:\temp\cyclegan\t1_drcmr2ixi\testB", ext=".tif"))
+    convert_to_rgb(get_files(r"F:\temp\cyclegan\t1_drcmr2ixi\testB", predicate=lambda x: x.endswith(".tif")))
     randomize_files(r"F:\temp\cyclegan\t1_drcmr2ixi\testB")

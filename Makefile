@@ -1,11 +1,9 @@
-.PHONY: test init init-dev
+.PHONY: test init
 
 init: .venv
 
-init-dev: init
-	pip --quiet install -r requirements/dev.txt
-
-test: init-dev
+test: .venv
+	pip --quiet install pytest
 	pytest tests
 
 .venv: # creates virtual environment (detectable by vscode)

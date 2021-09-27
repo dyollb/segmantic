@@ -2,21 +2,21 @@ import os
 import numpy as np
 import itk
 from random import randint
+from pathlib import Path
 
-from .core import identity
+from .core import identity, AnyImage
 from .modality import scale_clamp_ct
 
-
 def export_slices(
-    im1_dir,
-    im2_dir,
-    labels_dir,
-    output_dir,
-    tag1="A",
-    tag2="B",
+    im1_dir: Path,
+    im2_dir: Path,
+    labels_dir: Path,
+    output_dir: Path,
+    tag1: str="A",
+    tag2: str="B",
     process_img1=identity,
     process_img2=identity,
-):
+) -> None:
     '''Create paired dataset for use with pix2pix (first run combine_A_B.py)'''
     files = []
     for f in os.listdir(im1_dir):
@@ -69,7 +69,7 @@ def export_slices(
             )
 
 
-def preprocess_mri(x):
+def preprocess_mri(x: AnyImage) -> AnyImage:
     x_view = itk.array_view_from_image(x)
     x_view *= 255.0 / 280.0
     np.clip(x_view, a_min=0, a_max=255, out=x_view)
@@ -88,10 +88,10 @@ if __name__ == "__main__":
     # print(pix.shape, pix.dtype)
 
     export_slices(
-        im1_dir=r"F:\Data\DRCMR-Thielscher\all_data\images",  # T1
-        im2_dir=r"F:\Data\DRCMR-Thielscher\for_machine_learning\images",  # CT
-        labels_dir=r"F:\Data\DRCMR-Thielscher\all_data\labels_16",
-        output_dir=r"F:\temp\t1w2ctm",
+        im1_dir=Path(r"F:\Data\DRCMR-Thielscher\all_data\images"),  # T1
+        im2_dir=Path(r"F:\Data\DRCMR-Thielscher\for_machine_learning\images"),  # CT
+        labels_dir=Path(r"F:\Data\DRCMR-Thielscher\all_data\labels_16"),
+        output_dir=Path(r"F:\temp\t1w2ctm"),
         tag1="t1w",
         tag2="ct",
         process_img1=preprocess_mri,

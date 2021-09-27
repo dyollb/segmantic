@@ -37,7 +37,8 @@ import random
 import os
 import glob
 import json
-from typing import Dict, List
+from typing import Dict, List, Union
+from pathlib import Path
 
 from segmantic.prepro.labels import load_tissue_list
 
@@ -95,19 +96,6 @@ def compute_confusion(num_classes: int, y_pred: torch.Tensor, y: torch.Tensor):
         for t, p in zip(y_pred.view(-1), y.view(-1)):
             cm[t, p] += 1
     return cm
-
-
-def compute_confusion(y_pred, y):
-    """
-    Returns confusion matrix computed with sklearn.metrics.confusion_matrix
-
-    num_classes:    number of labels including '0', i.e. max(y)+1
-    y_pred:         predicted labels
-    y:              true labels
-    """
-    from sklearn.metrics import confusion_matrix
-
-    return confusion_matrix(y.view(-1).cpu().numpy(), y_pred.view(-1).cpu().numpy())
 
 
 def plot_confusion_matrix(
@@ -284,7 +272,7 @@ class Net(pytorch_lightning.LightningModule):
     def forward(self, x):
         return self._model(x)
 
-    def prepare_data(self):
+    def prepare_data(self) -> None:
         # set up the correct data path
         train_images = sorted(glob.glob(os.path.join(self.image_dir, "*.nii.gz")))
         train_labels = sorted(glob.glob(os.path.join(self.labels_dir, "*.nii.gz")))
@@ -387,13 +375,13 @@ class Net(pytorch_lightning.LightningModule):
 
 
 def train(
-    image_dir: str,
-    labels_dir: str,
+    image_dir: Path,
+    labels_dir: Path,
     log_dir: str,
     num_classes: int,
-    model_file_name: str,
+    model_file_name: Path,
+    output_dir: Union[str, Path],
     max_epochs: int = 600,
-    output_dir=None,
     gpu_ids: list = [],
 ):
     """Run the training"""
@@ -432,7 +420,7 @@ def train(
     )
 
     settings = {"num_classes": num_classes}
-    with open(model_file_name.rsplit(".", 1)[0] + ".json", "w") as json_file:
+    with open(os.path.splitext(model_file_name)[0] + ".json", "w") as json_file:
         json.dump(settings, json_file)
 
     trainer.save_checkpoint(model_file_name)
@@ -489,15 +477,15 @@ def train(
 
 def predict(
     model_file: str,
-    test_images: List[str],
-    test_labels: List[str] = None,
+    output_dir: Path,
+    test_images: List[Path],
+    test_labels: List[Path] = None,
     tissue_dict: Dict[str, int] = None,
-    output_dir: str = None,
     save_nifti: bool = False,
     gpu_ids: list = [],
 ):
     # load trained model
-    with open(model_file.rsplit(".", 1)[0] + ".json") as json_file:
+    with open(os.path.splitext(model_file)[0] + ".json") as json_file:
         settings = json.load(json_file)
         num_classes = settings["num_classes"]
 
@@ -532,7 +520,7 @@ def predict(
 
     # for saving output
     save_transforms = []
-    if save_nifti and output_dir:
+    if save_nifti:
         os.makedirs(output_dir, exist_ok=True)
         save_transforms.append(
             SaveImaged(
@@ -615,7 +603,9 @@ def predict(
                 filename_or_obj = test_data["image_meta_dict"]["filename_or_obj"]
                 if filename_or_obj:
                     base = os.path.basename(filename_or_obj[0]).split(".", 1)[0]
-                    c = compute_confusion(y_pred=val_pred, y=val_labels)
+                    c = compute_confusion(
+                        num_classes=num_classes, y_pred=val_pred, y=val_labels
+                    )
                     # print("Conf. Matrix = ", c)
                     plot_confusion_matrix(
                         c,

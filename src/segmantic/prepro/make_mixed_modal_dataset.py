@@ -1,14 +1,14 @@
 import os
 import shutil
+from pathlib import Path
+from typing import Callable, List, Union
+
+from .core import get_files, PathLike
 
 
-def get_files(dir, cond=lambda x: True, ext=".nii.gz"):
-    return [
-        os.path.join(dir, f) for f in os.listdir(dir) if f.endswith(ext) and cond(f)
-    ]
-
-
-def copy_image_labels(dirA, dirB, outdirA, outdirB, suffix):
+def copy_image_labels(
+    dirA: PathLike, dirB: PathLike, outdirA: PathLike, outdirB: PathLike, suffix: str
+) -> None:
     b_files = list(os.listdir(dirB))
     for f in os.listdir(dirA):
         if f in b_files:
