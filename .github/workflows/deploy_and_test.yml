@@ -36,3 +36,8 @@ jobs:
         run: |
           pip install pytest
           pytest tests
+      - name: static analysis
+        working-directory: segmantic_src
+        run: |
+          npm install pyright
+          pyright
