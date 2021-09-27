@@ -26,7 +26,7 @@ if __name__ == "__main__":
     print_config()
 
     tissue_dict = load_tissue_list(args.tissue_list)
-    num_classes = max(tissue_dict.keys()) + 1
+    num_classes = max(tissue_dict.values()) + 1
     assert len(tissue_dict) == num_classes, "Expecting contiguous labels in range [0,N-1]"
 
     os.makedirs(args.results_dir, exist_ok=True)

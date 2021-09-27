@@ -1,11 +1,12 @@
 # Semantic segmentation
+[![Build Actions Status](https://github.com/dyollb/segmantic/workflows/CI/badge.svg)](https://github.com/dyollb/segmantic/actions)
 
 Semantic segmentation and image-to-image translation based on AI. This repo collects methods for pre-process data, style transfer and semantic segmentation.
 
 
 ## Installation
 
-Dependencies are listed in `requirements.txt`. It is advisable to install the package in a virtual environment, e.g. using `venv`
+Dependencies are listed in `requirements/generic.txt`. It is advisable to install the package in a virtual environment, e.g. using `venv`
 ```
 cd /your/working/directory
 python -m venv .venv
@@ -23,10 +24,6 @@ Or in edit mode:
 pip install -e git+https://github.com/dyollb/segmantic.git#egg=segmantic
 ```
 
-Or, if you need access tokens:
-```
-pip install -e git+https://<user_name>:<access_token>@github.com/dyollb/segmantic.git#egg=segmantic
-```
 
 
 

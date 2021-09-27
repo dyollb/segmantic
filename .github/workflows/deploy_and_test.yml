@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - "*.md"
+      - "*.png"
+      - "*.svg"
+      - "docs/**"
+      - ".vscode/**"
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - "*.md"
+      - "*.png"
+      - "*.svg"
+      - "docs/**"
+      - ".vscode/**"
+
+jobs:
+  build-and-test:
+      runs-on: ubuntu-18.04
+      steps:
+      - uses: actions/checkout@v2
+        with:
+          path: segmantic_src
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.6
+      - name: pip install
+        run: pip install -e segmantic_src
+      - name: test
+        working-directory: segmantic_src
+        run: |
+          pip install pytest
+          pytest tests

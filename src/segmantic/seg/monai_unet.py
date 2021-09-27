@@ -37,6 +37,7 @@ import random
 import os
 import glob
 import json
+from typing import Dict, List
 
 from segmantic.prepro.labels import load_tissue_list
 
@@ -67,7 +68,7 @@ def make_random_cmap(num_classes):
     return colors.ListedColormap(col)
 
 
-def compute_confusion_naive(num_classes, y_pred, y):
+def compute_confusion(num_classes: int, y_pred: torch.Tensor, y: torch.Tensor):
     """
     Compute confusion matrix similar to sklearn.metrics.confusion_matrix
 
@@ -75,10 +76,25 @@ def compute_confusion_naive(num_classes, y_pred, y):
     y_pred:         predicted labels
     y:              true labels
     """
-    confusion_matrix = torch.zeros(num_classes, num_classes)
-    for t, p in zip(y.view(-1), y_pred.view(-1)):
-        confusion_matrix[t.long(), p.long()] += 1
-    return confusion_matrix
+    try:
+        from numba import njit
+
+        @njit
+        def _compute_confusion(num_classes: int, y_pred: np.ndarray, y: np.ndarray):
+            cm = np.zeros(num_classes, num_classes)
+            for t, p in zip(y_pred, y):
+                cm[t, p] += 1
+            return cm
+
+        return _compute_confusion(
+            num_classes, y_pred.view(-1).cpu().numpy(), y.view(-1).cpu().numpy()
+        )
+    except:
+        # fall back to naive approach
+        cm = np.zeros(num_classes, num_classes)
+        for t, p in zip(y_pred.view(-1), y.view(-1)):
+            cm[t, p] += 1
+    return cm
 
 
 def compute_confusion(y_pred, y):
@@ -222,7 +238,6 @@ def create_transforms(keys, train=False, num_classes=0, spacing=None):
                 )
             )
     return Compose(xforms + [EnsureTyped(keys=keys)])
-
 
 
 def make_device(gpu_ids: list):
@@ -474,12 +489,12 @@ def train(
 
 def predict(
     model_file: str,
-    test_images: list,
-    test_labels: list = None,
-    tissue_dict: dict = None,
+    test_images: List[str],
+    test_labels: List[str] = None,
+    tissue_dict: Dict[str, int] = None,
     output_dir: str = None,
     save_nifti: bool = False,
-    gpu_ids: list = []
+    gpu_ids: list = [],
 ):
     # load trained model
     with open(model_file.rsplit(".", 1)[0] + ".json") as json_file:
@@ -569,8 +584,9 @@ def predict(
 
     tissue_names = [""] * num_classes
     if tissue_dict:
-        for idx in tissue_dict.keys():
-            tissue_names[idx] = tissue_dict[idx]
+        for name in tissue_dict.keys():
+            idx = tissue_dict[name]
+            tissue_names[idx] = name
 
     with torch.no_grad():
         for test_data in test_loader:
@@ -579,7 +595,7 @@ def predict(
             val_pred = sliding_window_inference(
                 inputs=val_image, roi_size=(96, 96, 96), sw_batch_size=4, predictor=net
             )
-            
+
             test_data["pred"] = val_pred
             for i in decollate_batch(test_data):
                 post_transforms(i)
@@ -601,7 +617,11 @@ def predict(
                     base = os.path.basename(filename_or_obj[0]).split(".", 1)[0]
                     c = compute_confusion(y_pred=val_pred, y=val_labels)
                     # print("Conf. Matrix = ", c)
-                    plot_confusion_matrix(c, tissue_names, file_name=os.path.join(output_dir, base + "_confusion.png"))
+                    plot_confusion_matrix(
+                        c,
+                        tissue_names,
+                        file_name=os.path.join(output_dir, base + "_confusion.png"),
+                    )
 
 
 def get_nifti_files(dir):
