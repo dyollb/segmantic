@@ -377,10 +377,10 @@ class Net(pytorch_lightning.LightningModule):
 def train(
     image_dir: Path,
     labels_dir: Path,
-    log_dir: str,
+    log_dir: Path,
     num_classes: int,
     model_file_name: Path,
-    output_dir: Union[str, Path],
+    output_dir: Path,
     max_epochs: int = 600,
     gpu_ids: list = [],
 ):
@@ -390,7 +390,7 @@ def train(
     net = Net(n_classes=num_classes, image_dir=image_dir, labels_dir=labels_dir)
 
     # set up loggers and checkpoints
-    tb_logger = pytorch_lightning.loggers.TensorBoardLogger(save_dir=log_dir)
+    tb_logger = pytorch_lightning.loggers.TensorBoardLogger(save_dir=str(log_dir))
     checkpoint_callback = ModelCheckpoint(
         filename=os.path.join(output_dir, "{epoch}-{val_loss:.2f}-{val_dice:.4f}"),
         monitor="val_dice",
@@ -476,7 +476,7 @@ def train(
 
 
 def predict(
-    model_file: str,
+    model_file: Path,
     output_dir: Path,
     test_images: List[Path],
     test_labels: List[Path] = None,
@@ -489,7 +489,7 @@ def predict(
         settings = json.load(json_file)
         num_classes = settings["num_classes"]
 
-    net = Net.load_from_checkpoint(model_file, n_classes=num_classes)
+    net = Net.load_from_checkpoint(str(model_file), n_classes=num_classes)
 
     net.eval()
     device = make_device(gpu_ids)

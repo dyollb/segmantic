@@ -1,13 +1,10 @@
 import os
 import shutil
 from pathlib import Path
-from typing import Callable, List, Union
-
-from .core import get_files, PathLike
 
 
 def copy_image_labels(
-    dirA: PathLike, dirB: PathLike, outdirA: PathLike, outdirB: PathLike, suffix: str
+    dirA: Path, dirB: Path, outdirA: Path, outdirB: Path, suffix: str
 ) -> None:
     b_files = list(os.listdir(dirB))
     for f in os.listdir(dirA):
@@ -24,16 +21,16 @@ def copy_image_labels(
 
 if __name__ == "__main__":
     copy_image_labels(
-        dirA=r"F:\Data\DRCMR-Thielscher\mdix0_images",
-        dirB=r"F:\Data\DRCMR-Thielscher\all_data\labels_16",
-        outdirA=r"F:\Data\DRCMR-Thielscher\all_data\mixed_images",
-        outdirB=r"F:\Data\DRCMR-Thielscher\all_data\mixed_labels",
+        dirA=Path(r"F:\Data\DRCMR-Thielscher\mdix0_images"),
+        dirB=Path(r"F:\Data\DRCMR-Thielscher\all_data\labels_16"),
+        outdirA=Path(r"F:\Data\DRCMR-Thielscher\all_data\mixed_images"),
+        outdirB=Path(r"F:\Data\DRCMR-Thielscher\all_data\mixed_labels"),
         suffix="_mdix0",
     )
     copy_image_labels(
-        dirA=r"F:\Data\DRCMR-Thielscher\mdix1_images",
-        dirB=r"F:\Data\DRCMR-Thielscher\all_data\labels_16",
-        outdirA=r"F:\Data\DRCMR-Thielscher\all_data\mixed_images",
-        outdirB=r"F:\Data\DRCMR-Thielscher\all_data\mixed_labels",
+        dirA=Path(r"F:\Data\DRCMR-Thielscher\mdix1_images"),
+        dirB=Path(r"F:\Data\DRCMR-Thielscher\all_data\labels_16"),
+        outdirA=Path(r"F:\Data\DRCMR-Thielscher\all_data\mixed_images"),
+        outdirB=Path(r"F:\Data\DRCMR-Thielscher\all_data\mixed_labels"),
         suffix="_mdix1",
     )

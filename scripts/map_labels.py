@@ -1,4 +1,5 @@
 import os
+from typing import Callable
 import numpy as np
 import itk
 import argparse
@@ -76,7 +77,9 @@ if __name__ == "__main__":
 
     if os.path.exists(args.output_tissues):
         omap = load_tissue_list(args.output_tissues)
-        mapper = lambda name: omap[name]
+        def map_name(n: str) -> str:
+            return omap[n]
+        mapper = map_name
     elif args.output_tissues in locals():
         mapper = locals()[args.output_tissues]
 
@@ -84,7 +87,7 @@ if __name__ == "__main__":
     omap, i2o = build_tissue_mapping(imap, mapper)
 
     os.makedirs(args.output_dir, exist_ok=True)
-    save_tissue_list(omap, os.path.join(args.output_dir, "labels_5.txt"))
+    save_tissue_list(omap, Path(args.output_dir) / "labels_5.txt")
 
     for f in os.listdir(args.input_dir):
         if not f.endswith(".nii.gz"):

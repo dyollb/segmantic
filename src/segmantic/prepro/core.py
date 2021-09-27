@@ -11,7 +11,6 @@ from itk.itkImagePython import itkImageBase2 as Image2
 from itk.itkImagePython import itkImageBase3 as Image3
 from itk.support.types import ImageLike as AnyImage
 ImageNd = Union[Image2, Image3]
-PathLike = Union[str, Path]
 
 
 def identity(x: AnyImage) -> AnyImage:
