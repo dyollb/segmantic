@@ -39,7 +39,7 @@ import random
 import os
 import glob
 import json
-from typing import Dict, List, Union
+from typing import List, Optional, Dict
 from pathlib import Path
 
 from segmantic.prepro.labels import load_tissue_list
@@ -481,7 +481,7 @@ def predict(
     model_file: Path,
     output_dir: Path,
     test_images: List[Path],
-    test_labels: List[Path] = None,
+    test_labels: Optional[List[Path]] = None,
     tissue_dict: Dict[str, int] = None,
     save_nifti: bool = False,
     gpu_ids: list = [],
