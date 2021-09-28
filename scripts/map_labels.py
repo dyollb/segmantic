@@ -78,10 +78,12 @@ if __name__ == "__main__":
     if os.path.exists(args.output_tissues):
         omap = load_tissue_list(args.output_tissues)
         def map_name(n: str) -> str:
-            return omap[n]
+            return n#omap[n]
         mapper = map_name
     elif args.output_tissues in locals():
         mapper = locals()[args.output_tissues]
+    else:
+        raise RuntimeError("Invalid mapping function specified")
 
     # build index mapping from input to output
     omap, i2o = build_tissue_mapping(imap, mapper)
@@ -94,7 +96,8 @@ if __name__ == "__main__":
             continue
 
         image = itk.imread(os.path.join(args.input_dir, f))
-        image[:] = i2o[image[:]]
+        image_view = itk.array_view_from_image(image)
+        image_view[:] = i2o[image_view[:]]
 
         assert len(np.unique(image)) == np.max(image) + 1
 

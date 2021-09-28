@@ -52,7 +52,6 @@ jobs:
           pip install pytest
           pytest tests
       - name: Static analysis
-        working-directory: segmantic_src
-        run: |
-          npm install --global pyright
-          pyright
+        uses: jpetrucciani/mypy-check@0.910
+        with:
+          path: 'segmantic_src'

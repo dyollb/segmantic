@@ -1,17 +1,37 @@
-# Welcome to MkDocs
+# Segmantic
 
-For full documentation visit [mkdocs.org](https://www.mkdocs.org).
+Segmantic is a [PyTorch](https://pytorch.org/)-based library for medical image segmentation.
 
-## Commands
+## Features
 
-* `mkdocs new [dir-name]` - Create a new project.
-* `mkdocs serve` - Start the live-reloading docs server.
-* `mkdocs build` - Build the documentation site.
-* `mkdocs -h` - Print help message and exit.
+* utilities to prepare datasets for use in training of segmentation and style transfer networks
+* image to image translation (based on [pix2pix / cyclegan](https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix)) to help generalization from limited training data
+* segmentation networks
 
-## Project layout
+## Installation
 
-    mkdocs.yml    # The configuration file.
-    docs/
-        index.md  # The documentation homepage.
-        ...       # Other markdown pages, images and other files.
+Create a virtal environment
+```
+cd /your/working/directory
+python -m venv .venv
+```
+Activate it using e.g. `source .venv/bin/activate` on Linux/Mac and `.venv\Scripts\activate.bat` on Windows.
+
+To install this repo (this will install all dependencies):
+```
+pip install git+https://github.com/dyollb/segmantic.git#egg=segmantic
+```
+Or in edit mode
+```
+pip install -e git+https://github.com/dyollb/segmantic.git#egg=segmantic
+```
+
+## Getting started
+
+The project layout is as follows:
+
+    setup.py      # 
+    src/segmantic
+        prepro    # module containing utils to prepare your data
+        i2i       # image-to-image translation (style transfer)
+        seg       # semantic segmentation networks, training and prediction

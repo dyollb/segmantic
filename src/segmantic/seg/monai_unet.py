@@ -27,7 +27,9 @@ from monai.data import CacheDataset, list_data_collate, decollate_batch, NiftiSa
 from monai.config import print_config
 from monai.networks.utils import one_hot
 import torch
+import torch.utils.data
 import pytorch_lightning
+import pytorch_lightning.loggers
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 import matplotlib.pyplot as plt
 from matplotlib import colors
@@ -82,9 +84,9 @@ def compute_confusion(num_classes: int, y_pred: torch.Tensor, y: torch.Tensor):
 
         @njit
         def _compute_confusion(num_classes: int, y_pred: np.ndarray, y: np.ndarray):
-            cm = np.zeros(num_classes, num_classes)
-            for t, p in zip(y_pred, y):
-                cm[t, p] += 1
+            cm = np.zeros((num_classes, num_classes))
+            for i in range(num_classes):
+                cm[y[i], y_pred[i]] += 1
             return cm
 
         return _compute_confusion(
@@ -92,7 +94,7 @@ def compute_confusion(num_classes: int, y_pred: torch.Tensor, y: torch.Tensor):
         )
     except:
         # fall back to naive approach
-        cm = np.zeros(num_classes, num_classes)
+        cm = np.zeros((num_classes, num_classes))
         for t, p in zip(y_pred.view(-1), y.view(-1)):
             cm[t, p] += 1
     return cm
@@ -243,7 +245,7 @@ class Net(pytorch_lightning.LightningModule):
     def __init__(self, n_classes, image_dir="", labels_dir="", model_file_name=""):
         super().__init__()
         self._model = UNet(
-            dimensions=3,
+            spatial_dims=3,
             in_channels=1,
             out_channels=n_classes,
             channels=(16, 32, 64, 128, 256),
@@ -470,7 +472,7 @@ def train(
             else:
                 plt.show()
 
-            if output_dir:
+            if saver:
                 pred_labels = val_outputs.argmax(dim=1, keepdim=True)
                 saver.save_batch(pred_labels, val_data["image_meta_dict"])
 

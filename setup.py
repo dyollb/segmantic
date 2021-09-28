@@ -6,6 +6,7 @@ import re
 import sys
 from pathlib import Path
 from subprocess import check_output
+from typing import Set
 
 from setuptools import setup, find_packages
 
@@ -38,7 +39,7 @@ def get_extra_requires(path: Path, add_all: bool = True):
         extra_deps = defaultdict(set)
         for k in fp:
             if k.strip() and not k.startswith("#"):
-                tags = set()
+                tags: Set[str] = set()
                 if ":" in k:
                     k, v = k.split(":")
                     tags.update(vv.strip() for vv in v.split(","))

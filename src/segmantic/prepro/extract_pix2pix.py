@@ -7,17 +7,18 @@ from pathlib import Path
 from .core import identity, AnyImage
 from .modality import scale_clamp_ct
 
-def export_slices(
+
+def export_slices( # type: ignore
     im1_dir: Path,
     im2_dir: Path,
     labels_dir: Path,
     output_dir: Path,
-    tag1: str="A",
-    tag2: str="B",
+    tag1: str = "A",
+    tag2: str = "B",
     process_img1=identity,
     process_img2=identity,
 ) -> None:
-    '''Create paired dataset for use with pix2pix (first run combine_A_B.py)'''
+    """Create paired dataset for use with pix2pix (first run combine_A_B.py)"""
     files = []
     for f in os.listdir(im1_dir):
         if not f.endswith(".nii.gz"):

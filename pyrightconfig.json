@@ -9,4 +9,6 @@
         "**/seg/"
     ],
     "useLibraryCodeForTypes": true,
+    "reportPrivateImportUsage": false,
+    "reportMissingImports": "warning"
 }

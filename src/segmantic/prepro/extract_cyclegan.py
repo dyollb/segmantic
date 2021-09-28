@@ -17,7 +17,7 @@ def bbox(img: Image2) -> Tuple[float, float, float, float]:
     return rmin, rmax, cmin, cmax
 
 
-def export_slices(
+def export_slices( # type: ignore
     image_files: List[str],
     output_dir: str,
     axis: int = 0,
