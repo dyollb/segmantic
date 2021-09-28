@@ -21,17 +21,19 @@ To install this repo (this will install all dependencies):
 ```
 pip install git+https://github.com/dyollb/segmantic.git#egg=segmantic
 ```
-Or in edit mode
+Or in edit/dev mode
 ```
-pip install -e git+https://github.com/dyollb/segmantic.git#egg=segmantic
+pip install -e git+https://github.com/dyollb/segmantic.git#egg=segmantic[dev]
 ```
 
 ## Getting started
 
 The project layout is as follows:
 
-    setup.py      # 
+    setup.py
     src/segmantic
-        prepro    # module containing utils to prepare your data
-        i2i       # image-to-image translation (style transfer)
-        seg       # semantic segmentation networks, training and prediction
+        prepro/     # module containing utils to prepare your data
+        i2i/        # image-to-image translation (style transfer)
+        seg/        # semantic segmentation networks, training and prediction
+    scripts/
+    tests/

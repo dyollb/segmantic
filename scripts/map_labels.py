@@ -5,7 +5,11 @@ import itk
 import argparse
 from pathlib import Path
 
-from segmantic.prepro.labels import load_tissue_list, save_tissue_list, build_tissue_mapping
+from segmantic.prepro.labels import (
+    load_tissue_list,
+    save_tissue_list,
+    build_tissue_mapping,
+)
 
 
 drcmr_labels_16 = [
@@ -62,11 +66,36 @@ def map_vessels2other(name: str):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Map labels.')
-    parser.add_argument('-i', '--input_dir', dest='input_dir', type=Path, required=True, help='input directory')
-    parser.add_argument('-o', '--output_dir', dest='output_dir', type=Path, required=True, help='output directory')
-    parser.add_argument('--input_tissues', dest='input_tissues', type=Path, help='input tissue list file')
-    parser.add_argument('--output_tissues', dest='output_tissues', type=Path, required=True, help='output tissue list file')
+    parser = argparse.ArgumentParser(description="Map labels.")
+    parser.add_argument(
+        "-i",
+        "--input_dir",
+        dest="input_dir",
+        type=Path,
+        required=True,
+        help="input directory",
+    )
+    parser.add_argument(
+        "-o",
+        "--output_dir",
+        dest="output_dir",
+        type=Path,
+        required=True,
+        help="output directory",
+    )
+    parser.add_argument(
+        "--input_tissues",
+        dest="input_tissues",
+        type=Path,
+        help="input tissue list file",
+    )
+    parser.add_argument(
+        "--output_tissues",
+        dest="output_tissues",
+        type=Path,
+        required=True,
+        help="output tissue list file",
+    )
     args = parser.parse_args()
 
     # get input and output tissue lists
@@ -77,8 +106,10 @@ if __name__ == "__main__":
 
     if os.path.exists(args.output_tissues):
         omap = load_tissue_list(args.output_tissues)
+
         def map_name(n: str) -> str:
-            return n#omap[n]
+            return n  # omap[n]
+
         mapper = map_name
     elif args.output_tissues in locals():
         mapper = locals()[args.output_tissues]

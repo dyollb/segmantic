@@ -9,6 +9,7 @@ from typing import List, Optional, Sequence, Union, Callable
 from itk.itkImagePython import itkImageBase2 as Image2
 from itk.itkImagePython import itkImageBase3 as Image3
 from itk.support.types import ImageLike as AnyImage
+
 itkImage = Union[Image2, Image3]
 ImageOrArray = Union[Image2, Image3, np.ndarray]
 
@@ -116,6 +117,8 @@ def crop(img: AnyImage, target_size: tuple = (256, 256)) -> AnyImage:
     return img
 
 
-def get_files(dir: str, predicate: Callable[[str], bool]=lambda f: f.endswith(".nii.gz")) -> list:
-    """Collect list of file names filtered by 'predicate' """
+def get_files(
+    dir: str, predicate: Callable[[str], bool] = lambda f: f.endswith(".nii.gz")
+) -> list:
+    """Collect list of file names filtered by 'predicate'"""
     return [os.path.join(dir, f) for f in os.listdir(dir) if predicate(f)]

@@ -20,9 +20,9 @@ To install this repo (this will install all dependencies):
 ```
 pip install git+https://github.com/dyollb/segmantic.git#egg=segmantic
 ```
-Or in edit mode
+Or in edit/dev mode
 ```
-pip install -e git+https://github.com/dyollb/segmantic.git#egg=segmantic
+pip install -e git+https://github.com/dyollb/segmantic.git#egg=segmantic[dev]
 ```
 
 ## Example scripts

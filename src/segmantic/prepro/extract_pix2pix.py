@@ -8,7 +8,7 @@ from .core import identity, AnyImage
 from .modality import scale_clamp_ct
 
 
-def export_slices( # type: ignore
+def export_slices(  # type: ignore
     im1_dir: Path,
     im2_dir: Path,
     labels_dir: Path,

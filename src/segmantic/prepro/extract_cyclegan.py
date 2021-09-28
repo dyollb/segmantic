@@ -4,7 +4,15 @@ import itk
 from random import randint
 from typing import List, Tuple
 
-from .core import extract_slices, resample, scale_to_range, identity, get_files, AnyImage, Image2
+from .core import (
+    extract_slices,
+    resample,
+    scale_to_range,
+    identity,
+    get_files,
+    AnyImage,
+    Image2,
+)
 from .modality import scale_clamp_ct
 
 
@@ -17,7 +25,7 @@ def bbox(img: Image2) -> Tuple[float, float, float, float]:
     return rmin, rmax, cmin, cmax
 
 
-def export_slices( # type: ignore
+def export_slices(  # type: ignore
     image_files: List[str],
     output_dir: str,
     axis: int = 0,
@@ -134,5 +142,10 @@ if __name__ == "__main__":
         axis=1,
         flip_lr=True,
     )
-    convert_to_rgb(get_files(r"F:\temp\cyclegan\t1_drcmr2ixi\testB", predicate=lambda x: x.endswith(".tif")))
+    convert_to_rgb(
+        get_files(
+            r"F:\temp\cyclegan\t1_drcmr2ixi\testB",
+            predicate=lambda x: x.endswith(".tif"),
+        )
+    )
     randomize_files(r"F:\temp\cyclegan\t1_drcmr2ixi\testB")

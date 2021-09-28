@@ -2,10 +2,13 @@ import numpy as np
 import colorsys
 from pathlib import Path
 from typing import Callable, Dict, Tuple
+
 RGBTuple = Tuple[float, float, float]
 
 
-def build_tissue_mapping(input_label_map: Dict[str, int], mapper: Callable[[str], str]) -> Tuple[Dict[str, int], np.ndarray]:
+def build_tissue_mapping(
+    input_label_map: Dict[str, int], mapper: Callable[[str], str]
+) -> Tuple[Dict[str, int], np.ndarray]:
     """build mapping to relable
 
     Args:
