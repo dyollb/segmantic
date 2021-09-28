@@ -1,10 +1,16 @@
 import os
 import numpy as np
 import itk
-import argparse
+import typer
+import json
 from pathlib import Path
+from typing import Union
 
-from segmantic.prepro.labels import load_tissue_list, save_tissue_list, build_tissue_mapping
+from segmantic.prepro.labels import (
+    load_tissue_list,
+    save_tissue_list,
+    build_tissue_mapping,
+)
 
 
 drcmr_labels_16 = [
@@ -60,39 +66,55 @@ def map_vessels2other(name: str):
     return premap(name)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Map labels.')
-    parser.add_argument('-i', '--input_dir', dest='input_dir', type=Path, required=True, help='input directory')
-    parser.add_argument('-o', '--output_dir', dest='output_dir', type=Path, required=True, help='output directory')
-    parser.add_argument('--input_tissues', dest='input_tissues', type=Path, help='input tissue list file')
-    parser.add_argument('--output_tissues', dest='output_tissues', type=Path, required=True, help='output tissue list file')
-    args = parser.parse_args()
+def main(
+    input_dir: Path,
+    output_dir: Path,
+    input_tissues: Path,
+    input2output: Union[str, Path],
+):
+    """Map labels in all nifty files in specified directory
+
+    Args:
+        input_dir (Path): input_dir
+        output_dir (Path): output_dir
+        input_tissues (Path): output tissue list file
+        input2output (Path): mapping name [map_bone_fg_bg, map_bone_skin_air_fg_bg, map_vessels2other], or json file mapping input to output tissues
+
+    The json file can be generated using:
+        with open(input2output, 'w') as f:
+            json.dump({ "Skull": "Bone", "Mandible": "Bone", "Fat": "Fat" }, f)
+    """
 
     # get input and output tissue lists
-    if args.input_tissues:
-        imap = load_tissue_list(args.input_tissues)
+    if input_tissues:
+        imap = load_tissue_list(input_tissues)
     else:
         imap = {n: i for i, n in enumerate(drcmr_labels_16)}
 
-    if os.path.exists(args.output_tissues):
-        omap = load_tissue_list(args.output_tissues)
-        mapper = lambda name: omap[name]
-    elif args.output_tissues in locals():
-        mapper = locals()[args.output_tissues]
+    if os.path.exists(input2output):
+        with open(input2output) as f:
+            i2omap = json.load(f)
+        mapper = lambda n: i2omap[n]
+    elif input2output in locals():
+        mapper = locals()[str(input2output)]
+    else:
+        raise RuntimeError("Invalid mapping function specified")
 
     # build index mapping from input to output
     omap, i2o = build_tissue_mapping(imap, mapper)
 
-    os.makedirs(args.output_dir, exist_ok=True)
-    save_tissue_list(omap, os.path.join(args.output_dir, "labels_5.txt"))
+    os.makedirs(output_dir, exist_ok=True)
+    save_tissue_list(omap, output_dir / "labels_5.txt")
 
-    for f in os.listdir(args.input_dir):
-        if not f.endswith(".nii.gz"):
-            continue
-
-        image = itk.imread(os.path.join(args.input_dir, f))
-        image[:] = i2o[image[:]]
+    for input_file in input_dir.glob("*.nii.gz"):
+        image = itk.imread(f)
+        image_view = itk.array_view_from_image(image)
+        image_view[:] = i2o[image_view[:]]
 
         assert len(np.unique(image)) == np.max(image) + 1
 
-        itk.imwrite(image, os.path.join(args.output_dir, f))
+        itk.imwrite(image, output_dir / input_file.name)
+
+
+if __name__ == "__main__":
+    typer.run(main)

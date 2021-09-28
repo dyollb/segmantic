@@ -1,15 +1,18 @@
 import numpy as np
 import colorsys
 from pathlib import Path
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, Tuple
+
 RGBTuple = Tuple[float, float, float]
 
 
-def build_tissue_mapping(input_label_map: Dict[str, int], mapper: Callable[[str], str]):
+def build_tissue_mapping(
+    input_label_map: Dict[str, int], mapper: Callable[[str], str]
+) -> Tuple[Dict[str, int], np.ndarray]:
     """build mapping to relable
 
     Args:
-        input_label_map (Dict[str, int]): list of tissue names, e.g. loaded with 'load_tissue_list'
+        input_label_map (Dict[str, int]): dict of tissue names and labels, e.g. loaded with 'load_tissue_list'
         mapper (Callable[[str], str]): function that maps a tissue name to a new name
 
     Returns:
@@ -34,7 +37,7 @@ def save_tissue_list(
     tissue_label_map: Dict[str, int],
     tissue_list_file_name: Path,
     tissue_color_map: Callable[[str], RGBTuple] = None,
-):
+) -> None:
     """save tissue list in iSEG format
 
     Example:
@@ -52,7 +55,7 @@ def save_tissue_list(
 
     if tissue_color_map is None:
 
-        def random_color(l, max_label) -> RGBTuple:
+        def random_color(l: int, max_label: int) -> RGBTuple:
             if l == 0:
                 return (0, 0, 0)
             hue = l / (2.0 * max_label) + (l % 2) * 0.5

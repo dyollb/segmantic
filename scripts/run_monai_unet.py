@@ -1,38 +1,67 @@
 from monai.config import print_config
 import os
 import argparse
+from pathlib import Path
+from typing import List
 
 from segmantic.prepro.labels import load_tissue_list
 from segmantic.seg.monai_unet import train, predict
 
 
-
-def get_nifti_files(dir):
+def get_nifti_files(dir: Path) -> List[Path]:
     if not dir:
         return []
-    return sorted([os.path.join(dir, f) for f in os.listdir(dir) if f.endswith(".nii.gz")])
+    return sorted([dir / f for f in os.listdir(dir) if f.endswith(".nii.gz")])
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Train and predict.')
-    parser.add_argument('-i', '--image_dir', dest='image_dir', type=str, required=True, help='image directory')
-    parser.add_argument('-l', '--labels_dir', dest='labels_dir', type=str, help='label image directory')
-    parser.add_argument('-o', '--results_dir', dest='results_dir', default='.', type=str, help='results directory')
-    parser.add_argument('--tissue_list', type=str, required=True, help='file containing label descriptors')
-    parser.add_argument('--predict', action='store_true', help='run prediction')
-    parser.add_argument('--gpu_ids', nargs="+", type=int, help='space seperated list of GPU ids, -1 is for CPU', default=[0])
+    parser = argparse.ArgumentParser(description="Train and predict.")
+    parser.add_argument(
+        "-i",
+        "--image_dir",
+        dest="image_dir",
+        type=Path,
+        required=True,
+        help="image directory",
+    )
+    parser.add_argument(
+        "-l", "--labels_dir", dest="labels_dir", type=Path, help="label image directory"
+    )
+    parser.add_argument(
+        "-o",
+        "--results_dir",
+        dest="results_dir",
+        default=".",
+        type=str,
+        help="results directory",
+    )
+    parser.add_argument(
+        "--tissue_list",
+        type=Path,
+        required=True,
+        help="file containing label descriptors",
+    )
+    parser.add_argument("--predict", action="store_true", help="run prediction")
+    parser.add_argument(
+        "--gpu_ids",
+        nargs="+",
+        type=int,
+        help="space seperated list of GPU ids, -1 is for CPU",
+        default=[0],
+    )
     args = parser.parse_args()
 
     print_config()
 
     tissue_dict = load_tissue_list(args.tissue_list)
     num_classes = max(tissue_dict.values()) + 1
-    assert len(tissue_dict) == num_classes, "Expecting contiguous labels in range [0,N-1]"
+    assert (
+        len(tissue_dict) == num_classes
+    ), "Expecting contiguous labels in range [0,N-1]"
 
     os.makedirs(args.results_dir, exist_ok=True)
-    log_dir = os.path.join(args.results_dir, "logs")
-    model_file = os.path.join(args.results_dir, "drcmr_%d.ckpt" % num_classes)
-
+    log_dir = Path(args.results_dir) / "logs"
+    model_file = Path(args.results_dir) / ("drcmr_%d.ckpt" % num_classes)
 
     if args.predict:
         predict(

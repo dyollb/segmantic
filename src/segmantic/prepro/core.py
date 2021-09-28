@@ -2,32 +2,35 @@ import math
 import os
 import numpy as np
 import itk
-from typing import Optional, Union
+from pathlib import Path
+from typing import List, Optional, Sequence, Union, Callable
 
-
-# todo: generalize to other types
+# frequently used types
 from itk.itkImagePython import itkImageBase2 as Image2
 from itk.itkImagePython import itkImageBase3 as Image3
 from itk.support.types import ImageLike as AnyImage
 
+itkImage = Union[Image2, Image3]
+ImageOrArray = Union[Image2, Image3, np.ndarray]
 
-def identity(x: AnyImage):
+
+def identity(x: AnyImage) -> AnyImage:
     return x
 
 
-def as_image(x: AnyImage):
+def as_image(x: AnyImage) -> AnyImage:
     if isinstance(x, np.ndarray):
         return itk.image_view_from_array(x)
     return x
 
 
-def as_array(x: AnyImage):
+def as_array(x: AnyImage) -> np.ndarray:
     if isinstance(x, np.ndarray):
         return x
     return itk.array_from_image(x)
 
 
-def extract_slices(img: Image3, axis: int = 2):
+def extract_slices(img: Image3, axis: int = 2) -> List[Image2]:
     """Get 2D image slices from 3D image"""
     slices = []
     for k in range(img.shape[axis]):
@@ -40,7 +43,7 @@ def extract_slices(img: Image3, axis: int = 2):
     return slices
 
 
-def scale_to_range(img: AnyImage, vmin: float = 0.0, vmax: float = 255.0):
+def scale_to_range(img: AnyImage, vmin: float = 0.0, vmax: float = 255.0) -> AnyImage:
     """Scale numpy itk.Image to fit in range [vmin,vmax]"""
     x_view = as_array(img)
     x_min, x_max = np.min(x_view), np.max(x_view)
@@ -50,7 +53,7 @@ def scale_to_range(img: AnyImage, vmin: float = 0.0, vmax: float = 255.0):
     return img
 
 
-def resample(img: Union[Image2, Image3], target_spacing=Optional[tuple]):
+def resample(img: itkImage, target_spacing: Optional[Sequence] = None) -> itkImage:
     """resample N-D itk.Image to a fixed spacing (default:0.85)"""
     dim = img.GetImageDimension()
     interpolator = itk.LinearInterpolateImageFunction.New(img)
@@ -78,7 +81,7 @@ def resample(img: Union[Image2, Image3], target_spacing=Optional[tuple]):
     return resampled
 
 
-def pad(img: AnyImage, target_size: tuple = (256, 256), value: float = 0):
+def pad(img: AnyImage, target_size: tuple = (256, 256), value: float = 0) -> AnyImage:
     """Pad (2D) image to the target size"""
     size = itk.size(img)
     delta = [int(t - min(s, t)) for s, t in zip(size, target_size)]
@@ -95,7 +98,7 @@ def pad(img: AnyImage, target_size: tuple = (256, 256), value: float = 0):
     return img
 
 
-def crop(img: AnyImage, target_size: tuple = (256, 256)):
+def crop(img: AnyImage, target_size: tuple = (256, 256)) -> AnyImage:
     """Crop (2D) image to the target size (centered)"""
     size = itk.size(img)
     delta = [int(max(s, t) - t) for s, t in zip(size, target_size)]
@@ -114,6 +117,8 @@ def crop(img: AnyImage, target_size: tuple = (256, 256)):
     return img
 
 
-def get_files(dir: str, predicate=lambda f: f.endswith(".nii.gz")):
-    """Collect list of file names filtered by 'predicate' """
+def get_files(
+    dir: str, predicate: Callable[[str], bool] = lambda f: f.endswith(".nii.gz")
+) -> list:
+    """Collect list of file names filtered by 'predicate'"""
     return [os.path.join(dir, f) for f in os.listdir(dir) if predicate(f)]

@@ -1,0 +1,14 @@
+{
+    "include": [
+        "src/",
+        "tests/",
+        "scripts/"
+    ],
+    "exclude": [
+        "**/pix2pix_cyclegan",
+        "**/seg/"
+    ],
+    "useLibraryCodeForTypes": true,
+    "reportPrivateImportUsage": false,
+    "reportMissingImports": "warning"
+}

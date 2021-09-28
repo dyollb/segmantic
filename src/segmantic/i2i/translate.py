@@ -72,8 +72,15 @@ def load_cyclegan_generator(model_file_path: str, gpu_ids: list = []):
 
 def translate(img: np.ndarray, model: torch.nn.Module, device: torch.device):
     from PIL import Image
+
     img_p = Image.fromarray(img).convert("RGB")
-    tr = transforms.Compose([transforms.Grayscale(1), transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,)),])
+    tr = transforms.Compose(
+        [
+            transforms.Grayscale(1),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,)),
+        ]
+    )
     with torch.no_grad():
         fake = (
             model(tr(img_p).to(device).view(1, 1, 256, 256)).detach().cpu().numpy()

@@ -1,12 +1,11 @@
-.PHONY: test init init-dev
+.PHONY: test init
 
 init: .venv
 
-init-dev: init
-	pip --quiet install -r requirements/dev.txt
-
-test: init-dev
+test: .venv
+	pip --quiet install pytest mypy
 	pytest tests
+	mypy .
 
 .venv: # creates virtual environment (detectable by vscode)
 	python3 -m venv $@
@@ -20,4 +19,4 @@ test: init-dev
 docs: .venv
 	pip install -r requirements/docs.txt
 	mkdocs build
-	mkdocs serve
+# mkdocs serve
