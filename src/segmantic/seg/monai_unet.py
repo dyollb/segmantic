@@ -392,7 +392,7 @@ def train(
     net = Net(n_classes=num_classes, image_dir=image_dir, labels_dir=labels_dir)
 
     # set up loggers and checkpoints
-    tb_logger = pytorch_lightning.loggers.TensorBoardLogger(save_dir=str(log_dir))
+    tb_logger = pytorch_lightning.loggers.TensorBoardLogger(save_dir=f"{log_dir}")
     checkpoint_callback = ModelCheckpoint(
         filename=os.path.join(output_dir, "{epoch}-{val_loss:.2f}-{val_dice:.4f}"),
         monitor="val_dice",
@@ -422,7 +422,7 @@ def train(
     )
 
     settings = {"num_classes": num_classes}
-    with open(os.path.splitext(model_file_name)[0] + ".json", "w") as json_file:
+    with model_file_name.with_suffix(".json").open("w") as json_file:
         json.dump(settings, json_file)
 
     trainer.save_checkpoint(model_file_name)
@@ -487,11 +487,11 @@ def predict(
     gpu_ids: list = [],
 ):
     # load trained model
-    with open(os.path.splitext(model_file)[0] + ".json") as json_file:
+    with model_file.with_suffix(".json").open() as json_file:
         settings = json.load(json_file)
         num_classes = settings["num_classes"]
 
-    net = Net.load_from_checkpoint(str(model_file), n_classes=num_classes)
+    net = Net.load_from_checkpoint(f"{model_file}", n_classes=num_classes)
 
     net.eval()
     device = make_device(gpu_ids)

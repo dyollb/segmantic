@@ -25,15 +25,15 @@ def test_tissue_list_io(tmp_path: Path, tissue_map: dict):
 def test_build_tissue_map(tissue_map: dict):
 
     # map "Skin" and "Fat" to "Other_tissue"
-    def map_name(name):
+    def _map_name(name):
         if name == "Background":
             return name
         if name == "Bone":
             return "Bone"
         return "Other_tissue"
 
-    omap, i2o = labels.build_tissue_mapping(tissue_map, map_name)
+    omap, i2o = labels.build_tissue_mapping(tissue_map, _map_name)
 
     assert len(omap) == 3
 
-    assert omap == {map_name(n1): i2o[i1] for n1, i1 in tissue_map.items()}
+    assert omap == {_map_name(n1): i2o[i1] for n1, i1 in tissue_map.items()}

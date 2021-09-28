@@ -78,7 +78,7 @@ setup(
     url="https://github.com/dyollb/segmantic.git",
     license=license,
     install_requires=install_requirements,
-    extras_require=get_extra_requires(current_dir / "requirements" / "extra.txt"),
+    extras_require=get_extra_requires(current_dir / "extras_require.txt"),
     packages=find_packages(where="src"),
     package_dir={
         "": "src",
