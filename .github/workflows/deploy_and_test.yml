@@ -52,6 +52,7 @@ jobs:
           pip install pytest
           pytest tests
       - name: Static analysis
-        uses: jpetrucciani/mypy-check@0.910
-        with:
-          path: 'segmantic_src'
+        working-directory: segmantic_src
+        run: |
+          pip install mypy
+          mypy .
