@@ -23,10 +23,16 @@ jobs:
   build-and-test:
       name: python ${{ matrix.python-version }}
       runs-on: ubuntu-18.04
+      continue-on-error: ${{ matrix.experimental }}
       strategy:
+        fail-fast: false
         max-parallel: 4
         matrix:
-          python-version: ['3.7', '3.8', '3.9', '3.10.0-rc.2']
+          python-version: ['3.7']
+          experimental: [false]
+          include:
+            - python-version: '3.10.0-rc.2'
+              experimental: true
       steps:
       - name: Checkout
         uses: actions/checkout@v2
