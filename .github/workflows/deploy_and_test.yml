@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v2
         with:
           path: segmantic_src
-      - name: Setup ${{ matrix.python-version }}
+      - name: Setup python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
