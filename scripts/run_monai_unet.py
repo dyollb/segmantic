@@ -3,7 +3,6 @@ import os
 import typer
 from pathlib import Path
 from typing import List
-import functools
 
 from segmantic.prepro.labels import load_tissue_list
 from segmantic.seg import monai_unet
@@ -16,9 +15,15 @@ def get_nifti_files(dir: Path) -> List[Path]:
 
 
 def main(
-    image_dir: Path,
-    labels_dir: Path,
-    tissue_list: Path,
+    image_dir: Path = typer.Option(
+        ..., "--image_dir", "-i", help="directory containing images"
+    ),
+    labels_dir: Path = typer.Option(
+        ..., "--labels_dir", "-l", help="directory containing labelfields"
+    ),
+    tissue_list: Path = typer.Option(
+        ..., "--tissue_list", help="label descriptors in iSEG format"
+    ),
     results_dir: Path = Path("results"),
     predict: bool = False,
     gpu_ids: List[int] = [0],
@@ -26,14 +31,8 @@ def main(
     """Train UNet or predict segmentation
 
     Example invocation:
-        --image_dir ./dataset/images --labels_dir ./dataset/labels --results_dir ./results --tissue_list ./dataset/labels.txt
-    Args:
-        image_dir (Path): Image directory
-        labels_dir (Path): Labels directory
-        results_dir (Path): Image directory
-        tissue_list (Path): File containing label descriptors
-        predict (bool, optional): Train or predict. Defaults to False
-        gpu_ids (List[int], optional): Select gpu id. Defaults to 0
+
+        -i ./dataset/images -l ./dataset/labels --results_dir ./results --tissue_list ./dataset/labels.txt
     """
 
     print_config()
