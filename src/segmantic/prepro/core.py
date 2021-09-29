@@ -68,7 +68,15 @@ def scale_to_range(img: AnyImage, vmin: float = 0.0, vmax: float = 255.0) -> Any
 
 
 def resample(img: itkImage, target_spacing: Optional[Sequence] = None) -> itkImage:
-    """resample N-D itk.Image to a fixed spacing (default:0.85)"""
+    """resample N-D itk. Image to a target spacing
+
+    Args:
+        img (itkImage): input image
+        target_spacing (Optional[Sequence]): target spacing (defaults to 0.85)
+
+    Returns:
+        itkImage: resampled image
+    """
     dim = img.GetImageDimension()
     interpolator = itk.LinearInterpolateImageFunction.New(img)
     transform = itk.IdentityTransform[itk.D, dim].New()
@@ -79,7 +87,7 @@ def resample(img: itkImage, target_spacing: Optional[Sequence] = None) -> itkIma
     size = itk.size(img)
     spacing = itk.spacing(img)
     for d in range(dim):
-        size[d] = math.ceil(size[d] * spacing[d] / 0.85)
+        size[d] = math.ceil(size[d] * spacing[d] / target_spacing[d])
         spacing[d] = target_spacing[d]
 
     # resample to target resolution
