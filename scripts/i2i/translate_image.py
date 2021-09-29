@@ -4,6 +4,7 @@ import typer
 from pathlib import Path
 from typing import List
 
+import segmantic
 from segmantic.prepro.core import crop
 from segmantic.i2i.translate import load_pix2pix_generator, translate_3d
 
@@ -19,25 +20,25 @@ def preprocess_mri(x):
 
 
 def main(
-    model: Path,
-    input: Path,
-    output: Path = Path("out.nii.gz"),
+    model: Path = typer.Option(..., "--model", "-m", help="model file path"),
+    input: Path = typer.Option(..., "--input", "-i", help="input image file"),
+    output: Path = typer.Option("out.nii.gz", "--output", "-o"),
     axis: int = 2,
     debug_axis: bool = False,
     gpu_ids: List[int] = [],
 ):
     """Translate image using style transfer model"""
 
-    # make sure input and output folder are valid
-    assert input.exists() and output.parent.exists()
+    if not input.exists():
+        raise ValueError(f"Invalid input {input}")
 
-    if not gpu_ids:
-        gpu_ids = []
+    if not output.parent.exists():
+        raise ValueError(f"Expected output dir {output.parent}")
 
     if debug_axis:
         crop_size = [1024, 1024, 1024]
         crop_size[axis] = 1
-        itk.imwrite(crop(itk.imread(str(input)), target_size=crop_size), str(output))
+        segmantic.imwrite(crop(segmantic.imread(input), target_size=crop_size), output)
         return
 
     # resample/pad
@@ -49,17 +50,14 @@ def main(
         model_file_path=model, gpu_ids=gpu_ids, eval=False
     )
 
-    # print(netg)
-    # assert False
-
     # load input image
-    img_t1 = itk.imread(input)
+    img_t1 = segmantic.imread(input)
 
     # translate slice-by-slice
-    img_ct = translate_3d(preprocess(img_t1), model=netg, axis=2, device=device)
+    img_ct = translate_3d(preprocess(img_t1), model=netg, axis=axis, device=device)
 
     # write translated image
-    itk.imwrite(postprocess(img_ct), output)
+    segmantic.imwrite(postprocess(img_ct), output)
 
 
 if __name__ == "__main__":

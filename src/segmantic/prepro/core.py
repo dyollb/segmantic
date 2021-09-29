@@ -29,6 +29,16 @@ def as_array(x: AnyImage) -> np.ndarray:
     return itk.array_from_image(x)
 
 
+def imread(filename: Path) -> itkImage:
+    """Wrapper around itk.imread to avoid having to convert Path to str"""
+    return itk.imread(f"{filename}")
+
+
+def imwrite(image: itkImage, filename: Path, compression: bool = False) -> None:
+    """Wrapper around itk.imwrite to avoid having to convert Path to str"""
+    return itk.imwrite(image, f"{filename}", compression=compression)
+
+
 def extract_slices(img: Image3, axis: int = 2) -> List[Image2]:
     """Get 2D image slices from 3D image
 

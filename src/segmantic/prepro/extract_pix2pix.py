@@ -4,6 +4,7 @@ import itk
 from random import randint
 from pathlib import Path
 
+import segmantic
 from .core import identity, AnyImage
 from .modality import scale_clamp_ct
 
@@ -34,9 +35,9 @@ def export_slices(  # type: ignore
 
     # loop over 3d images
     for idx, (p1, p2, p3) in enumerate(files):
-        img1 = process_img1(itk.imread(p1))
-        img2 = process_img2(itk.imread(p2))
-        labels = itk.imread(p3)
+        img1 = process_img1(segmantic.imread(p1))
+        img2 = process_img2(segmantic.imread(p2))
+        labels = segmantic.imread(p3)
         base = p1.name
 
         print(np.min(img1), np.max(img1))
@@ -51,7 +52,7 @@ def export_slices(  # type: ignore
             s2 = randint(0, img1.shape[2] - 256)
             slice1 = itk.image_from_array(img1[k, s1 : s1 + 256, s2 : s2 + 256])
             slice2 = itk.image_from_array(img2[k, s1 : s1 + 256, s2 : s2 + 256])
-            itk.imwrite(
+            segmantic.imwrite(
                 slice1.astype(itk.SS),
                 output_dir
                 / tag1
@@ -59,7 +60,7 @@ def export_slices(  # type: ignore
                 / base.replace(".nii.gz", "_%03d.tif" % k),
                 compression=True,
             )
-            itk.imwrite(
+            segmantic.imwrite(
                 slice2.astype(itk.SS),
                 output_dir
                 / tag2

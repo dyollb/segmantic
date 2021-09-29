@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Union
 
+import segmantic
 from segmantic.prepro.labels import (
     load_tissue_list,
     save_tissue_list,
@@ -70,7 +71,7 @@ def main(
     input_dir: Path,
     output_dir: Path,
     input_tissues: Path,
-    input2output: Union[str, Path],
+    input2output: str,
 ):
     """Map labels in all nifty files in specified directory
 
@@ -107,13 +108,13 @@ def main(
     save_tissue_list(omap, output_dir / "labels_5.txt")
 
     for input_file in input_dir.glob("*.nii.gz"):
-        image = itk.imread(f)
+        image = segmantic.imread(input_file)
         image_view = itk.array_view_from_image(image)
         image_view[:] = i2o[image_view[:]]
 
         assert len(np.unique(image)) == np.max(image) + 1
 
-        itk.imwrite(image, output_dir / input_file.name)
+        segmantic.imwrite(image, output_dir / input_file.name)
 
 
 if __name__ == "__main__":

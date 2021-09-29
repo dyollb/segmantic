@@ -5,6 +5,7 @@ from random import randint
 from typing import List, Tuple
 from pathlib import Path
 
+import segmantic
 from .core import (
     extract_slices,
     resample,
@@ -47,7 +48,7 @@ def export_slices(  # type: ignore
 
     # loop over 3d images
     for file_path in image_files:
-        img = itk.imread(file_path)
+        img = segmantic.imread(file_path)
 
         slices = extract_slices(img=process_img(img), axis=axis)
         f = os.path.basename(file_path)
@@ -84,7 +85,7 @@ def export_slices(  # type: ignore
             if flip_lr:
                 slice = np.rot90(slice, k=1)
 
-            itk.imwrite(
+            segmantic.imwrite(
                 itk.image_from_array(slice).astype(itk.SS),
                 output_dir / f.replace(".nii.gz", "_%03d.tif" % k),
                 compression=True,
