@@ -48,13 +48,13 @@ def test_hausdorff():
     labelfield = make_image(shape=(10, 10), spacing=(1.0, 1.0))
     labelfield[3:6, 3:6] = 1
 
-    r11 = evaluation.hausdorff_distance(labelfield, labelfield)
+    r11 = evaluation.hausdorff_surface_distance(labelfield, labelfield)
     assert r11["mean"] == 0.0
     assert all(v == 0.0 for v in r11.values())
 
     labelfield2 = make_image(shape=(10, 10), spacing=(1.0, 1.0))
     labelfield2[1:8, 2:7] = 1
 
-    r12 = evaluation.hausdorff_distance(labelfield, labelfield2)
+    r12 = evaluation.hausdorff_surface_distance(labelfield, labelfield2)
     assert r12["max"] >= 2.0
     assert all(v > 0.0 for v in r12.values())

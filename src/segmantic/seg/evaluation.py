@@ -6,10 +6,10 @@ from matplotlib import colors
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from segmantic.prepro.core import itkImage, as_array
+from segmantic.prepro.core import itkImage
 
 
-def hausdorff_distance(y_pred: itkImage, y_ref: itkImage) -> Dict[str, float]:
+def hausdorff_surface_distance(y_pred: itkImage, y_ref: itkImage) -> Dict[str, float]:
     """Compute symmetric surface distances between two binary masks
 
     Args:
@@ -36,11 +36,50 @@ def hausdorff_distance(y_pred: itkImage, y_ref: itkImage) -> Dict[str, float]:
     seg2ref_distance = np.multiply(seg_surface, ref_distance)
     seg2ref_distance = seg2ref_distance[np.nonzero(seg_surface)]
 
-    # compute statistics on both symmetric distances (both directions)
+    # compute statistics on symmetric distances (both directions)
     all_surface_distances = np.concatenate(
         (ref2seg_distance, seg2ref_distance), axis=None
     )
     all_surface_distances = np.abs(all_surface_distances)
+
+    mean_surface_distance = np.mean(all_surface_distances)
+    median_surface_distance = np.median(all_surface_distances)
+    std_surface_distance = np.std(all_surface_distances)
+    max_surface_distance = np.max(all_surface_distances)
+    return {
+        "mean": mean_surface_distance,
+        "median": median_surface_distance,
+        "std": std_surface_distance,
+        "max": max_surface_distance,
+    }
+
+
+def hausdorff_pointwise_distance(y_pred: itkImage, y_ref: itkImage) -> Dict[str, float]:
+    """Compute symmetric point-wise distances between two binary masks
+
+    Args:
+        y_pred (itkImage): predicted segmentation
+        y_ref (itkImage): reference segmentation
+
+    Returns:
+        Dict[str, float]: keys are 'mean', 'median', 'std', 'max'
+    """
+    seg_distance = itk.signed_maurer_distance_map_image_filter(
+        y_pred, use_image_spacing=True, squared_distance=False, inside_is_positive=False
+    )
+    ref_distance = itk.signed_maurer_distance_map_image_filter(
+        y_ref, use_image_spacing=True, squared_distance=False, inside_is_positive=False
+    )
+
+    # get distance inside foreground label
+    ref2seg_distance = seg_distance[np.nonzero(y_ref)]
+    seg2ref_distance = ref_distance[np.nonzero(y_pred)]
+
+    # compute statistics on symmetric distances (both directions)
+    all_surface_distances = np.concatenate(
+        (ref2seg_distance, seg2ref_distance), axis=None
+    )
+    all_surface_distances[all_surface_distances <= 0.0] = 0.0
 
     mean_surface_distance = np.mean(all_surface_distances)
     median_surface_distance = np.median(all_surface_distances)
