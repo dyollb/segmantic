@@ -3,20 +3,13 @@ import numpy as np
 
 import pytest
 from segmantic.prepro import core
+from tests.fixture import make_image
 
 
 @pytest.fixture
 def labelfield() -> core.Image3:
     """3D labelfield, where each slice has a uniform label = slice number"""
-    region = itk.ImageRegion[3]()
-    region.SetSize((5, 5, 5))
-    region.SetIndex((0, 0, 0))
-
-    image = itk.Image[itk.UC, 3].New()
-    image.SetRegions(region)
-    image.SetSpacing((0.5, 0.6, 0.7))
-    image.Allocate()
-
+    image = make_image(shape=(5, 5, 5), spacing=(0.5, 0.6, 0.7))
     view = itk.array_view_from_image(image)
     for i in range(5):
         # note: itk exposes the x-fastest array to numpy in c-order, i.e. view[z,y,x]

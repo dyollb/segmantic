@@ -38,8 +38,9 @@ import json
 from typing import List, Optional, Dict
 from pathlib import Path
 
-from .evaluation import make_random_cmap, compute_confusion, plot_confusion_matrix
+from .evaluation import confusion_matrix
 from .utils import make_device
+from .visualization import make_random_cmap, plot_confusion_matrix
 
 
 def create_transforms(keys, train=False, num_classes=0, spacing=None):
@@ -443,7 +444,7 @@ def predict(
                 filename_or_obj = test_data["image_meta_dict"]["filename_or_obj"]
                 if filename_or_obj:
                     base = os.path.basename(filename_or_obj[0]).split(".", 1)[0]
-                    c = compute_confusion(
+                    c = confusion_matrix(
                         num_classes=num_classes,
                         y_pred=val_pred.view(-1).cpu().numpy(),
                         y=val_labels.view(-1).cpu().numpy(),
