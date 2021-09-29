@@ -7,6 +7,7 @@ Segmantic is a [PyTorch](https://pytorch.org/)-based library for medical image s
 * utilities to prepare datasets for use in training of segmentation and style transfer networks
 * image to image translation (based on [pix2pix / cyclegan](https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix)) to help generalization from limited training data
 * segmentation networks
+* evaluation metrics (fast confusion matrix, hausdorff distance, ...)
 
 ## Installation
 
@@ -34,6 +35,6 @@ The project layout is as follows:
     src/segmantic
         prepro/     # module containing utils to prepare your data
         i2i/        # image-to-image translation (style transfer)
-        seg/        # semantic segmentation networks, training and prediction
+        seg/        # semantic segmentation: training, inference and evaluation
     scripts/
     tests/

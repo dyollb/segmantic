@@ -24,7 +24,7 @@ def main(
     output: Path = Path("out.nii.gz"),
     axis: int = 2,
     debug_axis: bool = False,
-    gpu_ids: List[int] = None,
+    gpu_ids: List[int] = [],
 ):
     """Translate image using style transfer model"""
 
