@@ -2,6 +2,8 @@ import torch
 import torchvision.transforms as transforms
 import numpy as np
 import itk
+from typing import Any, List, Tuple
+from pathlib import Path
 
 from ..prepro.core import crop, scale_to_range, Image3
 
@@ -9,8 +11,18 @@ from .pix2pix_cyclegan.models.networks import define_G
 
 
 def load_pix2pix_generator(
-    model_file_path: str, gpu_ids: list = [], eval: bool = False
-):
+    model_file_path: Path, gpu_ids: List[int] = [], eval: bool = False
+) -> Tuple[Any, torch.device]:
+    """Load a trained pix2pix model
+
+    Args:
+        model_file_path (Path): Trained pix2pix model file (.pth)
+        gpu_ids (List[int], optional): For selecting the GPU. Defaults to [].
+        eval (bool, optional): Run in eval mode. Defaults to False.
+
+    Returns:
+        Tuple[Any, torch.device]: Returns the generator and torch device
+    """
     gen = define_G(
         input_nc=1,
         output_nc=1,
@@ -44,7 +56,7 @@ def load_pix2pix_generator(
     return gen, device
 
 
-def load_cyclegan_generator(model_file_path: str, gpu_ids: list = []):
+def load_cyclegan_generator(model_file_path: Path, gpu_ids: List[int] = []):
     gen = define_G(
         input_nc=1,
         output_nc=1,

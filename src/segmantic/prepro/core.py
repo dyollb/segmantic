@@ -1,5 +1,4 @@
 import math
-import os
 import numpy as np
 import itk
 from pathlib import Path
@@ -30,16 +29,40 @@ def as_array(x: AnyImage) -> np.ndarray:
     return itk.array_from_image(x)
 
 
+def imread(filename: Path) -> itkImage:
+    """Wrapper around itk.imread to avoid having to convert Path to str"""
+    return itk.imread(f"{filename}")
+
+
+def imwrite(image: itkImage, filename: Path, compression: bool = False) -> None:
+    """Wrapper around itk.imwrite to avoid having to convert Path to str"""
+    return itk.imwrite(image, f"{filename}", compression=compression)
+
+
 def extract_slices(img: Image3, axis: int = 2) -> List[Image2]:
-    """Get 2D image slices from 3D image"""
+    """Get 2D image slices from 3D image
+
+    Args:
+        img (Image3): 3d image
+        axis (int, optional): Axis perpendicular to slices. Defaults to 2, i.e. XY slices
+
+    Returns:
+        List[Image2]: [description]
+    """
     slices = []
-    for k in range(img.shape[axis]):
-        if axis == 0:
-            slices.append(img[k, :, :])
-        elif axis == 1:
-            slices.append(img[:, k, :])
-        else:
-            slices.append(img[:, :, k])
+    size = itk.size(img)
+
+    region = itk.region(img)
+    region.SetSize(axis, 1)
+    _SUBMATRIX = 2
+
+    for k in range(size[axis]):
+        region.SetIndex(axis, k)
+        slices.append(
+            itk.extract_image_filter(
+                img, extraction_region=region, direction_collapse_to_strategy=_SUBMATRIX
+            )
+        )
     return slices
 
 
@@ -54,7 +77,15 @@ def scale_to_range(img: AnyImage, vmin: float = 0.0, vmax: float = 255.0) -> Any
 
 
 def resample(img: itkImage, target_spacing: Optional[Sequence] = None) -> itkImage:
-    """resample N-D itk.Image to a fixed spacing (default:0.85)"""
+    """resample N-D itk. Image to a target spacing
+
+    Args:
+        img (itkImage): input image
+        target_spacing (Optional[Sequence]): target spacing (defaults to 0.85)
+
+    Returns:
+        itkImage: resampled image
+    """
     dim = img.GetImageDimension()
     interpolator = itk.LinearInterpolateImageFunction.New(img)
     transform = itk.IdentityTransform[itk.D, dim].New()
@@ -65,7 +96,7 @@ def resample(img: itkImage, target_spacing: Optional[Sequence] = None) -> itkIma
     size = itk.size(img)
     spacing = itk.spacing(img)
     for d in range(dim):
-        size[d] = math.ceil(size[d] * spacing[d] / 0.85)
+        size[d] = math.ceil(size[d] * spacing[d] / target_spacing[d])
         spacing[d] = target_spacing[d]
 
     # resample to target resolution
@@ -98,7 +129,7 @@ def pad(img: AnyImage, target_size: tuple = (256, 256), value: float = 0) -> Any
     return img
 
 
-def crop(img: AnyImage, target_size: tuple = (256, 256)) -> AnyImage:
+def crop(img: AnyImage, target_size: Sequence[int] = (256, 256)) -> AnyImage:
     """Crop (2D) image to the target size (centered)"""
     size = itk.size(img)
     delta = [int(max(s, t) - t) for s, t in zip(size, target_size)]
@@ -106,19 +137,19 @@ def crop(img: AnyImage, target_size: tuple = (256, 256)) -> AnyImage:
     if any(delta):
         crop_low = [(d + 1) // 2 for d in delta]
         crop_hi = [delta[i] - p for i, p in enumerate(crop_low)]
-        print(size)
-        print(crop_low)
-        print(crop_hi)
+
+        _SUBMATRIX = 2
         img = itk.crop_image_filter(
             img,
             lower_boundary_crop_size=crop_low,
             upper_boundary_crop_size=crop_hi,
+            direction_collapse_to_strategy=_SUBMATRIX,
         )
     return img
 
 
 def get_files(
-    dir: str, predicate: Callable[[str], bool] = lambda f: f.endswith(".nii.gz")
-) -> list:
+    dir: Path, predicate: Callable[[str], bool] = lambda f: f.endswith(".nii.gz")
+) -> List[Path]:
     """Collect list of file names filtered by 'predicate'"""
-    return [os.path.join(dir, f) for f in os.listdir(dir) if predicate(f)]
+    return [f for f in Path(dir).glob("*.*") if predicate(f"{f}")]

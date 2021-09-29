@@ -4,6 +4,7 @@ import itk
 from random import randint
 from pathlib import Path
 
+import segmantic
 from .core import identity, AnyImage
 from .modality import scale_clamp_ct
 
@@ -20,27 +21,24 @@ def export_slices(  # type: ignore
 ) -> None:
     """Create paired dataset for use with pix2pix (first run combine_A_B.py)"""
     files = []
-    for f in os.listdir(im1_dir):
-        if not f.endswith(".nii.gz"):
-            continue
-        p1 = os.path.join(im1_dir, f)
-        p2 = os.path.join(im2_dir, f)
-        p3 = os.path.join(labels_dir, f)
-        if os.path.exists(p2) and os.path.exists(p3):
+    for p1 in im1_dir.glob("*.nii.gz"):
+        p2 = im2_dir / p1.name
+        p3 = labels_dir / p1.name
+        if p2.exists() and p3.exists():
             files.append((p1, p2, p3))
 
     # create folders for output
     folder = ["train"] * max(len(files) - 6, 1) + ["val"] * 3 + ["test"] * 3
     for sub in ["train", "val", "test"]:
-        os.makedirs(os.path.join(output_dir, tag1, sub), exist_ok=True)
-        os.makedirs(os.path.join(output_dir, tag2, sub), exist_ok=True)
+        os.makedirs(output_dir / tag1 / sub, exist_ok=True)
+        os.makedirs(output_dir / tag2 / sub, exist_ok=True)
 
     # loop over 3d images
     for idx, (p1, p2, p3) in enumerate(files):
-        img1 = process_img1(itk.imread(p1))
-        img2 = process_img2(itk.imread(p2))
-        labels = itk.imread(p3)
-        f = os.path.split(p1)[-1]
+        img1 = process_img1(segmantic.imread(p1))
+        img2 = process_img2(segmantic.imread(p2))
+        labels = segmantic.imread(p3)
+        base = p1.name
 
         print(np.min(img1), np.max(img1))
         print(np.min(img2), np.max(img2))
@@ -54,18 +52,20 @@ def export_slices(  # type: ignore
             s2 = randint(0, img1.shape[2] - 256)
             slice1 = itk.image_from_array(img1[k, s1 : s1 + 256, s2 : s2 + 256])
             slice2 = itk.image_from_array(img2[k, s1 : s1 + 256, s2 : s2 + 256])
-            itk.imwrite(
+            segmantic.imwrite(
                 slice1.astype(itk.SS),
-                os.path.join(
-                    output_dir, tag1, folder[idx], f.replace(".nii.gz", "_%03d.tif" % k)
-                ),
+                output_dir
+                / tag1
+                / folder[idx]
+                / base.replace(".nii.gz", "_%03d.tif" % k),
                 compression=True,
             )
-            itk.imwrite(
+            segmantic.imwrite(
                 slice2.astype(itk.SS),
-                os.path.join(
-                    output_dir, tag2, folder[idx], f.replace(".nii.gz", "_%03d.tif" % k)
-                ),
+                output_dir
+                / tag2
+                / folder[idx]
+                / base.replace(".nii.gz", "_%03d.tif" % k),
                 compression=True,
             )
 

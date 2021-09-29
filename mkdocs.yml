@@ -1,5 +1,5 @@
-site_name: Segmatic
-site_description: Automatic segmentation tools
+site_name: Segmantic
+site_description: Semantic segmentation and image-to-image translation based on AI
 repo_url: https://github.com/dyollb/segmantic
 
 theme:

@@ -3,7 +3,9 @@ import numpy as np
 import itk
 from random import randint
 from typing import List, Tuple
+from pathlib import Path
 
+import segmantic
 from .core import (
     extract_slices,
     resample,
@@ -26,19 +28,27 @@ def bbox(img: Image2) -> Tuple[float, float, float, float]:
 
 
 def export_slices(  # type: ignore
-    image_files: List[str],
-    output_dir: str,
-    axis: int = 0,
+    image_files: List[Path],
+    output_dir: Path,
+    axis: int = 2,
     flip_lr: bool = False,
     process_img=identity,
 ) -> None:
-    """Load list of 3D images and extract & export slices"""
+    """Load list of 3D images and extract & export slices
+
+    Args:
+        image_files (List[Path]): List of 3D image files to process
+        output_dir (Path): Slices will be exported to this folder
+        axis (int, optional): The axis defining the slice. Defaults to 2 (XY)
+        flip_lr (bool, optional): Flip slices. Defaults to False.
+        process_img ([type], optional): A user-defined callback to process the 3D image. Defaults to identity.
+    """
     # create folders for output
     os.makedirs(output_dir, exist_ok=True)
 
     # loop over 3d images
     for file_path in image_files:
-        img = itk.imread(file_path)
+        img = segmantic.imread(file_path)
 
         slices = extract_slices(img=process_img(img), axis=axis)
         f = os.path.basename(file_path)
@@ -75,9 +85,9 @@ def export_slices(  # type: ignore
             if flip_lr:
                 slice = np.rot90(slice, k=1)
 
-            itk.imwrite(
+            segmantic.imwrite(
                 itk.image_from_array(slice).astype(itk.SS),
-                os.path.join(output_dir, f.replace(".nii.gz", "_%03d.tif" % k)),
+                output_dir / f.replace(".nii.gz", "_%03d.tif" % k),
                 compression=True,
             )
 
@@ -86,7 +96,7 @@ def scale_to_uchar(img: AnyImage) -> AnyImage:
     return scale_to_range(img, vmin=0, vmax=255)
 
 
-def convert_to_rgb(files: List[str]) -> None:
+def convert_to_rgb(files: List[Path]) -> None:
     from PIL import Image
 
     for f in files:
@@ -97,22 +107,28 @@ def convert_to_rgb(files: List[str]) -> None:
         imgc.close()
 
 
-def randomize_files(dir: str, ext: str = ".tif") -> None:
+def randomize_files(dir: Path, ext: str = ".tif") -> None:
+    """randomize files in a folder
+
+    Args:
+        dir (Path): the directory to search in
+        ext (str, optional): the file extension. Defaults to ".tif".
+    """
     import shutil
     from random import sample
 
     random_sample = lambda x: sample(x, len(x))
 
-    files = random_sample([f for f in os.listdir(dir) if f.endswith(ext)])
+    files = random_sample([f for f in dir.glob("*%s" % ext)])
     for i, f in enumerate(files):
-        shutil.move(os.path.join(dir, f), os.path.join(dir, "im_%05d.tif" % i))
+        shutil.move(f, dir / ("im_%05d.tif" % i))
 
 
 if __name__ == "__main__":
 
-    t1_images = get_files(r"F:\Data\DRCMR-Thielscher\all_data\images")
+    t1_images = get_files(Path(r"F:\Data\DRCMR-Thielscher\all_data\images"))
     ixi_t1_images = get_files(
-        r"C:\Users\lloyd\Downloads\IXI-T1", predicate=lambda x: "Guys" in x
+        Path(r"C:\Users\lloyd\Downloads\IXI-T1"), predicate=lambda x: "Guys" in x
     )
 
     # export_slices(
@@ -137,15 +153,15 @@ if __name__ == "__main__":
 
     export_slices(
         image_files=ixi_t1_images[15:21],
-        output_dir=r"F:\temp\cyclegan\t1_drcmr2ixi\testB",
+        output_dir=Path(r"F:\temp\cyclegan\t1_drcmr2ixi\testB"),
         process_img=lambda x: resample(scale_to_uchar(x)),
         axis=1,
         flip_lr=True,
     )
     convert_to_rgb(
         get_files(
-            r"F:\temp\cyclegan\t1_drcmr2ixi\testB",
+            Path(r"F:\temp\cyclegan\t1_drcmr2ixi\testB"),
             predicate=lambda x: x.endswith(".tif"),
         )
     )
-    randomize_files(r"F:\temp\cyclegan\t1_drcmr2ixi\testB")
+    randomize_files(Path(r"F:\temp\cyclegan\t1_drcmr2ixi\testB"))
