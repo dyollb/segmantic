@@ -11,7 +11,7 @@ from segmantic.seg.monai_unet import train, predict
 def get_nifti_files(dir: Path) -> List[Path]:
     if not dir:
         return []
-    return sorted([dir / f for f in os.listdir(dir) if f.endswith(".nii.gz")])
+    return sorted([f for f in dir.glob("*.nii.gz")])
 
 
 if __name__ == "__main__":

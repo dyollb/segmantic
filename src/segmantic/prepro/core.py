@@ -1,5 +1,4 @@
 import math
-import os
 import numpy as np
 import itk
 from pathlib import Path
@@ -140,7 +139,7 @@ def crop(img: AnyImage, target_size: tuple = (256, 256)) -> AnyImage:
 
 
 def get_files(
-    dir: str, predicate: Callable[[str], bool] = lambda f: f.endswith(".nii.gz")
-) -> list:
+    dir: Path, predicate: Callable[[str], bool] = lambda f: f.endswith(".nii.gz")
+) -> List[Path]:
     """Collect list of file names filtered by 'predicate'"""
-    return [os.path.join(dir, f) for f in os.listdir(dir) if predicate(f)]
+    return [f for f in Path(dir).glob("*.*") if predicate(f"{f}")]

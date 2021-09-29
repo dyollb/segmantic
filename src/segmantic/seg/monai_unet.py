@@ -453,9 +453,3 @@ def predict(
                         tissue_names,
                         file_name=output_dir / (base + "_confusion.png"),
                     )
-
-
-def get_nifti_files(dir: Path) -> List[Path]:
-    if not dir:
-        return []
-    return sorted([f for f in dir.glob("*.nii.gz")])
