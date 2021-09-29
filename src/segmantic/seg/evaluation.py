@@ -6,7 +6,7 @@ from matplotlib import colors
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from segmantic.prepro.core import itkImage
+from segmantic.prepro.core import itkImage, as_array
 
 
 def hausdorff_distance(y_pred: itkImage, y_ref: itkImage) -> Dict[str, float]:
@@ -19,14 +19,14 @@ def hausdorff_distance(y_pred: itkImage, y_ref: itkImage) -> Dict[str, float]:
     Returns:
         Dict[str, float]: keys are 'mean', 'median', 'std', 'max'
     """
-    seg_surface = itk.binary_contour_image_filter(y_pred)
-    ref_surface = itk.binary_contour_image_filter(y_ref)
+    seg_surface = itk.binary_contour_image_filter(y_pred, foreground_value=1)
+    ref_surface = itk.binary_contour_image_filter(y_ref, foreground_value=1)
 
     seg_distance = itk.signed_maurer_distance_map_image_filter(
-        y_pred, use_image_spacing=True, squared_distance=True, inside_is_positive=False
+        y_pred, use_image_spacing=True, squared_distance=False, inside_is_positive=False
     )
     ref_distance = itk.signed_maurer_distance_map_image_filter(
-        y_ref, use_image_spacing=True, squared_distance=True, inside_is_positive=False
+        y_ref, use_image_spacing=True, squared_distance=False, inside_is_positive=False
     )
 
     # get distance at contour of foreground label
@@ -40,6 +40,7 @@ def hausdorff_distance(y_pred: itkImage, y_ref: itkImage) -> Dict[str, float]:
     all_surface_distances = np.concatenate(
         (ref2seg_distance, seg2ref_distance), axis=None
     )
+    all_surface_distances = np.abs(all_surface_distances)
 
     mean_surface_distance = np.mean(all_surface_distances)
     median_surface_distance = np.median(all_surface_distances)
