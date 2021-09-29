@@ -30,167 +30,16 @@ import torch
 import torch.utils.data
 import pytorch_lightning
 import pytorch_lightning.loggers
-from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint
 import matplotlib.pyplot as plt
-from matplotlib import colors
-import colorsys
-import numpy as np
-import random
 import os
 import glob
 import json
 from typing import List, Optional, Dict
 from pathlib import Path
 
-from segmantic.prepro.labels import load_tissue_list
-
-
-def make_random_cmap(num_classes):
-    """Make a random color map for <num_classes> different classes"""
-
-    def random_color(l, max_label):
-        if l == 0:
-            return (0, 0, 0)
-        hue = l / (2.0 * max_label) + (l % 2) * 0.5
-        hue = min(hue, 1.0)
-        return colorsys.hls_to_rgb(hue, 0.5, 1.0)
-
-    col = np.zeros(
-        (
-            num_classes,
-            3,
-        )
-    )
-
-    random.seed(0)
-    for i in random.sample(range(num_classes), num_classes):
-        r, g, b = random_color(i, num_classes)
-        col[i, 0] = r
-        col[i, 1] = g
-        col[i, 2] = b
-    return colors.ListedColormap(col)
-
-
-def compute_confusion(num_classes: int, y_pred: torch.Tensor, y: torch.Tensor):
-    """
-    Compute confusion matrix similar to sklearn.metrics.confusion_matrix
-
-    num_classes:    number of labels including '0', i.e. max(y)+1
-    y_pred:         predicted labels
-    y:              true labels
-    """
-    try:
-        from numba import njit
-
-        @njit
-        def _compute_confusion(num_classes: int, y_pred: np.ndarray, y: np.ndarray):
-            cm = np.zeros((num_classes, num_classes))
-            for i in range(num_classes):
-                cm[y[i], y_pred[i]] += 1
-            return cm
-
-        return _compute_confusion(
-            num_classes, y_pred.view(-1).cpu().numpy(), y.view(-1).cpu().numpy()
-        )
-    except:
-        # fall back to naive approach
-        cm = np.zeros((num_classes, num_classes))
-        for t, p in zip(y_pred.view(-1), y.view(-1)):
-            cm[t, p] += 1
-    return cm
-
-
-def plot_confusion_matrix(
-    cm,
-    target_names,
-    title="Confusion matrix",
-    cmap=None,
-    normalize=True,
-    file_name=None,
-):
-    """
-    given a sklearn confusion matrix (cm), make a nice plot
-
-    Arguments
-    ---------
-    cm:           confusion matrix from sklearn.metrics.confusion_matrix
-
-    target_names: given classification classes such as [0, 1, 2]
-                  the class names, for example: ['high', 'medium', 'low']
-
-    title:        the text to display at the top of the matrix
-
-    cmap:         the gradient of the values displayed from matplotlib.pyplot.cm
-                  see http://matplotlib.org/examples/color/colormaps_reference.html
-                  plt.get_cmap('jet') or plt.cm.Blues
-
-    normalize:    If False, plot the raw numbers
-                  If True, plot the proportions
-
-    Usage
-    -----
-    plot_confusion_matrix(cm           = cm,                  # confusion matrix created by
-                                                              # sklearn.metrics.confusion_matrix
-                          normalize    = True,                # show proportions
-                          target_names = y_labels_vals,       # list of names of the classes
-                          title        = best_estimator_name) # title of graph
-
-    Citiation
-    ---------
-    http://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html
-
-    """
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import itertools
-
-    accuracy = np.trace(cm) / float(np.sum(cm))
-    misclass = 1 - accuracy
-
-    if cmap is None:
-        cmap = plt.get_cmap("Blues")
-
-    if normalize:
-        cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
-
-    plt.figure(figsize=(16, 16))
-    plt.imshow(cm, interpolation="nearest", cmap=cmap)
-    plt.title(title)
-    plt.colorbar()
-
-    if target_names is not None:
-        tick_marks = np.arange(len(target_names))
-        plt.xticks(tick_marks, target_names, rotation=45)
-        plt.yticks(tick_marks, target_names)
-
-    thresh = cm.max() / 1.5 if normalize else cm.max() / 2
-    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        if normalize:
-            plt.text(
-                j,
-                i,
-                "{:0.4f}".format(cm[i, j]),
-                horizontalalignment="center",
-                color="white" if cm[i, j] > thresh else "black",
-            )
-        else:
-            plt.text(
-                j,
-                i,
-                "{:,}".format(cm[i, j]),
-                horizontalalignment="center",
-                color="white" if cm[i, j] > thresh else "black",
-            )
-
-    plt.tight_layout()
-    plt.ylabel("True label")
-    plt.xlabel(
-        "Predicted label\naccuracy={:0.4f}; misclass={:0.4f}".format(accuracy, misclass)
-    )
-    if file_name:
-        plt.savefig(file_name)
-    else:
-        plt.show()
+from .evaluation import make_random_cmap, compute_confusion, plot_confusion_matrix
+from .utils import make_device
 
 
 def create_transforms(keys, train=False, num_classes=0, spacing=None):
@@ -228,17 +77,6 @@ def create_transforms(keys, train=False, num_classes=0, spacing=None):
                 )
             )
     return Compose(xforms + [EnsureTyped(keys=keys)])
-
-
-def make_device(gpu_ids: list):
-    # use by default if none specified
-    if not gpu_ids and torch.cuda.is_available():
-        gpu_ids = [0]
-    # negative index means no gpu
-    if not gpu_ids or gpu_ids[0] < 0:
-        return torch.device("cpu")
-    # use gpu
-    return torch.device("cuda:{}".format(gpu_ids[0]))
 
 
 class Net(pytorch_lightning.LightningModule):
@@ -606,19 +444,18 @@ def predict(
                 if filename_or_obj:
                     base = os.path.basename(filename_or_obj[0]).split(".", 1)[0]
                     c = compute_confusion(
-                        num_classes=num_classes, y_pred=val_pred, y=val_labels
+                        num_classes=num_classes,
+                        y_pred=val_pred.view(-1).cpu().numpy(),
+                        y=val_labels.view(-1).cpu().numpy(),
                     )
-                    # print("Conf. Matrix = ", c)
                     plot_confusion_matrix(
                         c,
                         tissue_names,
-                        file_name=os.path.join(output_dir, base + "_confusion.png"),
+                        file_name=output_dir / (base + "_confusion.png"),
                     )
 
 
-def get_nifti_files(dir):
+def get_nifti_files(dir: Path) -> List[Path]:
     if not dir:
         return []
-    return sorted(
-        [os.path.join(dir, f) for f in os.listdir(dir) if f.endswith(".nii.gz")]
-    )
+    return sorted([f for f in dir.glob("*.nii.gz")])

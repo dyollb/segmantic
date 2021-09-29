@@ -31,15 +31,29 @@ def as_array(x: AnyImage) -> np.ndarray:
 
 
 def extract_slices(img: Image3, axis: int = 2) -> List[Image2]:
-    """Get 2D image slices from 3D image"""
+    """Get 2D image slices from 3D image
+
+    Args:
+        img (Image3): 3d image
+        axis (int, optional): Axis perpendicular to slices. Defaults to 2, i.e. XY slices
+
+    Returns:
+        List[Image2]: [description]
+    """
     slices = []
-    for k in range(img.shape[axis]):
-        if axis == 0:
-            slices.append(img[k, :, :])
-        elif axis == 1:
-            slices.append(img[:, k, :])
-        else:
-            slices.append(img[:, :, k])
+    size = itk.size(img)
+
+    region = itk.region(img)
+    region.SetSize(axis, 1)
+    _SUBMATRIX = 2
+
+    for k in range(size[axis]):
+        region.SetIndex(axis, k)
+        slices.append(
+            itk.extract_image_filter(
+                img, extraction_region=region, direction_collapse_to_strategy=_SUBMATRIX
+            )
+        )
     return slices
 
 
@@ -106,13 +120,13 @@ def crop(img: AnyImage, target_size: tuple = (256, 256)) -> AnyImage:
     if any(delta):
         crop_low = [(d + 1) // 2 for d in delta]
         crop_hi = [delta[i] - p for i, p in enumerate(crop_low)]
-        print(size)
-        print(crop_low)
-        print(crop_hi)
+
+        _SUBMATRIX = 2
         img = itk.crop_image_filter(
             img,
             lower_boundary_crop_size=crop_low,
             upper_boundary_crop_size=crop_hi,
+            direction_collapse_to_strategy=_SUBMATRIX,
         )
     return img
 

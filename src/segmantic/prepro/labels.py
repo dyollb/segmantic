@@ -41,8 +41,11 @@ def save_tissue_list(
     """save tissue list in iSEG format
 
     Example:
-    from segmantic.prepro import labels
-    labels.save_tissue_list({ 'Bone': 1, 'Fat': 2, 'Skin': 3 }, 'tissues.txt')
+        from segmantic.prepro import labels
+        labels.save_tissue_list({ 'Bone': 1, 'Fat': 2, 'Skin': 3 }, 'tissues.txt')
+
+    Note:
+        Label '0' is implicitly called Background
     """
     # invert dictionary
     num_tissues = max(tissue_label_map.values())
@@ -56,8 +59,7 @@ def save_tissue_list(
     if tissue_color_map is None:
 
         def random_color(l: int, max_label: int) -> RGBTuple:
-            if l == 0:
-                return (0, 0, 0)
+            assert l > 0, "Background (label=0) is implicit and not written to file"
             hue = l / (2.0 * max_label) + (l % 2) * 0.5
             hue = min(hue, 1.0)
             return colorsys.hls_to_rgb(hue, 0.5, 1.0)
@@ -99,3 +101,27 @@ def load_tissue_list(file_name: Path) -> Dict[str, int]:
                 tissue_label_map[tissue] = next_id
                 next_id += 1
     return tissue_label_map
+
+
+def load_tissue_colors(file_name: Path) -> Dict[str, RGBTuple]:
+    """load tissue colors from iSEG format tissue list
+
+    Example file:
+        V7
+        N3
+        C0.00 0.00 1.00 0.50 Bone
+        C0.00 1.00 0.00 0.50 Fat
+        C1.00 0.00 0.00 0.50 Skin
+    """
+    tissue_color_map = {"Background": (0.0, 0.0, 0.0)}
+    with open(file_name) as f:
+        for line in f.readlines():
+            if line.startswith("C"):
+                rgba = [float(v.strip()) for v in line.lstrip("C").split(" ")[:-1]]
+                tissue = line.rsplit(" ", 1)[-1].rstrip()
+                if tissue in tissue_color_map:
+                    raise KeyError(
+                        "duplicate label '%s' found in '%s'" % (tissue, file_name)
+                    )
+                tissue_color_map[tissue] = (rgba[0], rgba[1], rgba[2])
+    return tissue_color_map
