@@ -119,7 +119,7 @@ def pad(img: AnyImage, target_size: tuple = (256, 256), value: float = 0) -> Any
     return img
 
 
-def crop(img: AnyImage, target_size: tuple = (256, 256)) -> AnyImage:
+def crop(img: AnyImage, target_size: Sequence[int] = (256, 256)) -> AnyImage:
     """Crop (2D) image to the target size (centered)"""
     size = itk.size(img)
     delta = [int(max(s, t) - t) for s, t in zip(size, target_size)]

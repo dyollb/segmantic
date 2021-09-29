@@ -45,6 +45,10 @@ def test_pad_crop(labelfield: core.Image3):
     assert labelfield.GetOrigin() == cropped.GetOrigin()
     assert np.all(core.as_array(cropped) == core.as_array(labelfield))
 
+    slice = core.crop(labelfield, target_size=(5, 5, 1))
+    size = itk.size(slice)
+    assert size[2] == 1
+
 
 def test_resample():
     region = itk.ImageRegion[2]()
