@@ -17,7 +17,7 @@ def test_confusion_matrix():
 
     count = np.array(np.bincount(view))
 
-    cm = evaluation.compute_confusion(num_classes, view, view)
+    cm = evaluation.confusion_matrix(num_classes, view, view)
     assert np.all(np.diagonal(cm) == count)
     assert np.all(np.diagonal(cm, offset=1) == 0)
     assert np.all(np.diagonal(cm, offset=-1) == 0)
