@@ -2,7 +2,7 @@ import numpy as np
 import itk
 from typing import Dict
 
-from segmantic.prepro.core import itkImage
+from ..prepro.core import itkImage
 
 
 def hausdorff_surface_distance(y_pred: itkImage, y_ref: itkImage) -> Dict[str, float]:

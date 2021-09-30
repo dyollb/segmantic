@@ -9,7 +9,7 @@ from typing import List, Optional
 
 
 # TODO: create color map from tissue list
-# from segmantic.prepro.labels import RGBTuple, load_tissue_colors
+# from ..prepro.labels import RGBTuple, load_tissue_colors
 
 
 def make_random_cmap(num_classes: int):

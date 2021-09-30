@@ -81,7 +81,13 @@ def create_transforms(keys, train=False, num_classes=0, spacing=None):
 
 
 class Net(pytorch_lightning.LightningModule):
-    def __init__(self, n_classes, image_dir="", labels_dir="", model_file_name=""):
+    def __init__(
+        self,
+        n_classes: int,
+        image_dir: Path = Path(""),
+        labels_dir: Path = Path(""),
+        model_file_name: Path = Path(""),
+    ):
         super().__init__()
         self._model = UNet(
             spatial_dims=3,
@@ -115,8 +121,8 @@ class Net(pytorch_lightning.LightningModule):
 
     def prepare_data(self) -> None:
         # set up the correct data path
-        train_images = sorted(glob.glob(os.path.join(self.image_dir, "*.nii.gz")))
-        train_labels = sorted(glob.glob(os.path.join(self.labels_dir, "*.nii.gz")))
+        train_images = sorted(self.image_dir.glob("*.nii.gz"))
+        train_labels = sorted(self.labels_dir.glob("*.nii.gz"))
         data_dicts = [
             {"image": image_name, "label": label_name}
             for image_name, label_name in zip(train_images, train_labels)
@@ -223,6 +229,7 @@ def train(
     model_file_name: Path,
     output_dir: Path,
     max_epochs: int = 600,
+    save_nifti: bool = True,
     gpu_ids: list = [],
 ):
     """Run the training"""
@@ -273,7 +280,7 @@ def train(
     # %tensorboard --logdir=log_dir
 
     """## Check best model output with the input image and label"""
-    if output_dir:
+    if save_nifti:
         os.makedirs(output_dir, exist_ok=True)
         saver = NiftiSaver(output_dir=output_dir, separate_folder=False, resample=False)
 
@@ -304,12 +311,8 @@ def train(
                     torch.argmax(val_outputs, dim=1).detach().cpu()[0, :, :, slice],
                     cmap=cmap,
                 )
-            if output_dir:
-                plt.savefig(
-                    os.path.join(output_dir, "drcmr%02d_case%d.png" % (num_classes, i))
-                )
-            else:
-                plt.show()
+            plot_file_path = output_dir / f"drcmr{num_classes:02d}_case{i}.png"
+            plt.savefig(f"{plot_file_path}")
 
             if saver:
                 pred_labels = val_outputs.argmax(dim=1, keepdim=True)
@@ -322,7 +325,7 @@ def predict(
     test_images: List[Path],
     test_labels: Optional[List[Path]] = None,
     tissue_dict: Dict[str, int] = None,
-    save_nifti: bool = False,
+    save_nifti: bool = True,
     gpu_ids: list = [],
 ):
     # load trained model
@@ -443,7 +446,7 @@ def predict(
 
                 filename_or_obj = test_data["image_meta_dict"]["filename_or_obj"]
                 if filename_or_obj:
-                    base = os.path.basename(filename_or_obj[0]).split(".", 1)[0]
+                    base = Path(filename_or_obj).with_suffix("").name
                     c = confusion_matrix(
                         num_classes=num_classes,
                         y_pred=val_pred.view(-1).cpu().numpy(),

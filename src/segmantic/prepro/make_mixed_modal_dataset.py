@@ -6,16 +6,16 @@ from pathlib import Path
 def copy_image_labels(
     dirA: Path, dirB: Path, outdirA: Path, outdirB: Path, suffix: str
 ) -> None:
-    b_files = list(os.listdir(dirB))
-    for f in os.listdir(dirA):
+    b_files = [p.name for p in dirB.iterdir()]
+    for f in (p.name for p in dirA.iterdir()):
         if f in b_files:
             shutil.copy(
-                src=os.path.join(dirA, f),
-                dst=os.path.join(outdirA, f.replace(".nii.gz", suffix + ".nii.gz")),
+                src=dirA / f,
+                dst=outdirA / f.replace(".nii.gz", suffix + ".nii.gz"),
             )
             shutil.copy(
-                src=os.path.join(dirB, f),
-                dst=os.path.join(outdirB, f.replace(".nii.gz", suffix + ".nii.gz")),
+                src=dirB / f,
+                dst=outdirB / f.replace(".nii.gz", suffix + ".nii.gz"),
             )
 
 
