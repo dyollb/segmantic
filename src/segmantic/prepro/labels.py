@@ -9,15 +9,15 @@ RGBTuple = Tuple[float, float, float]
 def build_tissue_mapping(
     input_label_map: Dict[str, int], mapper: Callable[[str], str]
 ) -> Tuple[Dict[str, int], np.ndarray]:
-    """build mapping to relable
+    """Build mapping to map label fields
 
     Args:
-        input_label_map (Dict[str, int]): dict of tissue names and labels, e.g. loaded with 'load_tissue_list'
-        mapper (Callable[[str], str]): function that maps a tissue name to a new name
+        input_label_map: Dict of tissue names and labels, e.g. loaded with 'load_tissue_list'
+        mapper: Gunction that maps a tissue name to a new name
 
     Returns:
-        Dict[str, int]: tissue label dict after mapping
-        np.ndarray: input-to-output lookup table
+        1. tissue label dict after mapping
+        2. input-to-output lookup table
     """
     output_label_names = list(sorted(set([mapper(n) for n in input_label_map.keys()])))
     output_label_names.remove("Background")
@@ -38,7 +38,7 @@ def save_tissue_list(
     tissue_list_file_name: Path,
     tissue_color_map: Callable[[str], RGBTuple] = None,
 ) -> None:
-    """save tissue list in iSEG format
+    """Save tissue list in iSEG format
 
     Example:
         from segmantic.prepro import labels
@@ -58,17 +58,20 @@ def save_tissue_list(
 
     if tissue_color_map is None:
 
-        def random_color(l: int, max_label: int) -> RGBTuple:
-            assert l > 0, "Background (label=0) is implicit and not written to file"
+        def _random_color(l: int, max_label: int) -> RGBTuple:
+            if l <= 0:
+                raise ValueError(
+                    "Background (label=0) is implicit and not written to file"
+                )
             hue = l / (2.0 * max_label) + (l % 2) * 0.5
             hue = min(hue, 1.0)
             return colorsys.hls_to_rgb(hue, 0.5, 1.0)
 
-        tissue_color_map = lambda n: random_color(tissue_label_map[n], num_tissues)
+        tissue_color_map = lambda n: _random_color(tissue_label_map[n], num_tissues)
 
     with open(tissue_list_file_name, "w") as f:
         print("V7", file=f)
-        print("N%d" % num_tissues, file=f)
+        print(f"N{num_tissues}", file=f)
         for label in range(1, num_tissues + 1):
             name = label_tissue_map[label]
             r, g, b = tissue_color_map(name)
@@ -79,7 +82,7 @@ def save_tissue_list(
 
 
 def load_tissue_list(file_name: Path) -> Dict[str, int]:
-    """load tissue list in iSEG format
+    """Load tissue list in iSEG format
 
     Example file:
         V7
@@ -95,16 +98,14 @@ def load_tissue_list(file_name: Path) -> Dict[str, int]:
             if line.startswith("C"):
                 tissue = line.rsplit(" ", 1)[-1].rstrip()
                 if tissue in tissue_label_map:
-                    raise KeyError(
-                        "duplicate label '%s' found in '%s'" % (tissue, file_name)
-                    )
+                    raise KeyError(f"duplicate label '{tissue}' found in '{file_name}'")
                 tissue_label_map[tissue] = next_id
                 next_id += 1
     return tissue_label_map
 
 
 def load_tissue_colors(file_name: Path) -> Dict[str, RGBTuple]:
-    """load tissue colors from iSEG format tissue list
+    """Load tissue colors from iSEG format tissue list
 
     Example file:
         V7
@@ -120,8 +121,6 @@ def load_tissue_colors(file_name: Path) -> Dict[str, RGBTuple]:
                 rgba = [float(v.strip()) for v in line.lstrip("C").split(" ")[:-1]]
                 tissue = line.rsplit(" ", 1)[-1].rstrip()
                 if tissue in tissue_color_map:
-                    raise KeyError(
-                        "duplicate label '%s' found in '%s'" % (tissue, file_name)
-                    )
+                    raise KeyError(f"duplicate label '{tissue}' found in '{file_name}'")
                 tissue_color_map[tissue] = (rgba[0], rgba[1], rgba[2])
     return tissue_color_map

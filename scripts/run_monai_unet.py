@@ -39,9 +39,8 @@ def main(
 
     tissue_dict = load_tissue_list(tissue_list)
     num_classes = max(tissue_dict.values()) + 1
-    assert (
-        len(tissue_dict) == num_classes
-    ), "Expecting contiguous labels in range [0,N-1]"
+    if not len(tissue_dict) == num_classes:
+        raise ValueError("Expecting contiguous labels in range [0,N-1]")
 
     os.makedirs(results_dir, exist_ok=True)
     log_dir = Path(results_dir) / "logs"
@@ -66,6 +65,7 @@ def main(
             model_file_name=model_file,
             max_epochs=600,
             output_dir=results_dir,
+            save_nifti=True,
             gpu_ids=gpu_ids,
         )
 

@@ -42,7 +42,7 @@ def load_pix2pix_generator(
 
     if isinstance(gen, torch.nn.DataParallel):
         gen = gen.module
-    print("loading the model from %s" % model_file_path)
+    print(f"loading the model from {model_file_path}")
 
     # if you are using PyTorch newer than 0.4, you can remove str() on self.device
     state_dict = torch.load(model_file_path, map_location=str(device))
