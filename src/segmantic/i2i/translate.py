@@ -2,10 +2,10 @@ import torch
 import torchvision.transforms as transforms
 import numpy as np
 import itk
-from typing import Any, List, Tuple, Sequence
+from typing import Any, List, Tuple, Sequence, overload
 from pathlib import Path
 
-from ..prepro.core import crop, scale_to_range, Image3, Image2
+from ..prepro.core import crop, make_image, Image3, Image2
 
 from .pix2pix_cyclegan.models.networks import define_G
 
@@ -72,9 +72,9 @@ def load_cyclegan_generator(model_file_path: Path, device: torch.device):
 
 
 def make_tiles(
-    size: Sequence[int], tile_size: Tuple[int, int], overlap: int = 2
+    size: Sequence[int], tile_size: Tuple[int, int], overlap: int = 0
 ) -> List[Tuple[int, int]]:
-    """Break image into tiles of fixed size
+    """Break rectangular region into overlapping tiles of fixed size
 
     Args:
         size: shape of 2D image
@@ -93,31 +93,68 @@ def make_tiles(
         max(min(start[1], size[1] - tile_size[1]), 0),
     )
 
-    tiles = []
+    tile_indices = []
     start = [0, 0]
     while start[0] < size[0]:
         start[1] = 0
         while start[1] < size[1]:
-            tiles.append(fix_tile(start))
-            start[1] += tile_size[1] - overlap
-        start[0] += tile_size[0] - overlap
-    return tiles
+            tile_indices.append(fix_tile(start))
+            start[1] += tile_size[1]
+            if start[1] + 1 < size[1]:
+                start[1] -= overlap
+        start[0] += tile_size[0]
+        if start[0] + 1 < size[0]:
+            start[0] -= overlap
+    return tile_indices
 
 
 def tile_image(
-    image: Image2, tiles: List[Tuple[int, int]], tile_size: Tuple[int, int]
+    image: Image2, tile_indices: List[Tuple[int, int]], tile_size: Tuple[int, int]
 ) -> List[Image2]:
+    """Break image into tiles
+
+    Args:
+        image: input image
+        tile_indices: start index (corner) of tiles
+        tile_size: fixed size of tiles
+
+    Returns:
+        List[Image2]: image tiles
+    """
+    tiles = []
+    for start in tile_indices:
+        tiles.append(crop(image, target_offset=start, target_size=tile_size))
+    return tiles
+
+
+def merge_tiles(
+    tiles: List[Image2], tile_indices: List[Tuple[int, int]], tile_size: Tuple[int, int]
+) -> Image2:
+    """Combine tiles into a single image
+
+    Args:
+        tiles: list of image patches
+        tile_indices: start index (corner) of tiles
+        tile_size: fixed size of tiles
+
+    Returns:
+        [Image2]: merged image
+    """
+    size = [0, 0]
+    for t in tile_indices:
+        size[0] = max(size[0], t[0] + tile_size[0])
+        size[1] = max(size[1], t[1] + tile_size[1])
+
+    example = tiles[0]
+    image = make_image(
+        shape=size, spacing=itk.spacing(example), pixel_type=itk.template(example)[1][0]
+    )
     image_view = itk.array_view_from_image(image)
-    patches = []
-    for start in tiles:
-        patch = image_view[
+    for t, start in zip(tiles, tile_indices):
+        image_view[
             start[1] : start[1] + tile_size[1], start[0] : start[0] + tile_size[0]
-        ]
-        patch = itk.image_from_array(patch)
-        patch["spacing"] = image["spacing"]
-        # patch['origin'] = image['origin'] + image['spacing']
-        patches.append(crop(image, target_size=tile_size))
-    return patches
+        ] = itk.array_view_from_image(t)
+    return image
 
 
 def translate(img: np.ndarray, model: torch.nn.Module, device: torch.device):

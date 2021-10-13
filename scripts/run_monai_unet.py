@@ -44,7 +44,7 @@ def main(
 
     os.makedirs(results_dir, exist_ok=True)
     log_dir = Path(results_dir) / "logs"
-    model_file = Path(results_dir) / ("drcmr_%d.ckpt" % num_classes)
+    model_file = Path(results_dir) / f"drcmr_{num_classes:d}.ckpt"
 
     if predict:
         monai_unet.predict(

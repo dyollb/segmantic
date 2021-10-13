@@ -3,18 +3,7 @@ import numpy as np
 
 import pytest
 from segmantic.prepro import core
-from tests.fixture import make_image
-
-
-@pytest.fixture
-def labelfield() -> core.Image3:
-    """3D labelfield, where each slice has a uniform label = slice number"""
-    image = make_image(shape=(5, 5, 5), spacing=(0.5, 0.6, 0.7))
-    view = itk.array_view_from_image(image)
-    for i in range(5):
-        # note: itk exposes the x-fastest array to numpy in c-order, i.e. view[z,y,x]
-        view[i, :, :] = i
-    return image
+from tests.fixture import make_image, labelfield
 
 
 def test_extract_slices(labelfield: core.Image3):
@@ -30,15 +19,15 @@ def test_extract_slices(labelfield: core.Image3):
         assert np.all(slice_view == k)
 
 
-def test_pad_crop(labelfield: core.Image3):
+def test_pad_crop_center(labelfield: core.Image3):
     padded = core.pad(labelfield, target_size=(9, 9, 9))
-    cropped = core.crop(padded, target_size=(5, 5, 5))
+    cropped = core.crop_center(padded, target_size=(5, 5, 5))
 
     assert labelfield.GetSpacing() == cropped.GetSpacing()
     assert labelfield.GetOrigin() == cropped.GetOrigin()
     assert np.all(core.as_array(cropped) == core.as_array(labelfield))
 
-    slice = core.crop(labelfield, target_size=(5, 5, 1))
+    slice = core.crop_center(labelfield, target_size=(5, 5, 1))
     size = itk.size(slice)
     assert size[2] == 1
 

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List
 
 import segmantic
-from segmantic.prepro.core import crop
+from segmantic.prepro.core import crop_center
 from segmantic.i2i.translate import load_pix2pix_generator, translate_3d
 from segmantic.seg.utils import make_device
 
@@ -39,11 +39,13 @@ def main(
     if debug_axis:
         crop_size = [1024, 1024, 1024]
         crop_size[axis] = 1
-        segmantic.imwrite(crop(segmantic.imread(input), target_size=crop_size), output)
+        segmantic.imwrite(
+            crop_center(segmantic.imread(input), target_size=crop_size), output
+        )
         return
 
     # TODO: resample/pad
-    preprocess = lambda img: crop(img, target_size=(256, 256, 10))
+    preprocess = lambda img: crop_center(img, target_size=(256, 256, 10))
     postprocess = lambda img: img
 
     device = make_device(gpu_ids)

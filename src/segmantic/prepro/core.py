@@ -8,9 +8,12 @@ from typing import List, Optional, Sequence, Union, Callable
 from itk.itkImagePython import itkImageBase2 as Image2
 from itk.itkImagePython import itkImageBase3 as Image3
 from itk.support.types import ImageLike as AnyImage
+from itk.support.types import itkCType
 
 itkImage = Union[Image2, Image3]
 ImageOrArray = Union[Image2, Image3, np.ndarray]
+
+_COLLAPSE_STRATGEY_SUBMATRIX = 2
 
 
 def identity(x: AnyImage) -> AnyImage:
@@ -39,6 +42,31 @@ def imwrite(image: itkImage, filename: Path, compression: bool = False) -> None:
     return itk.imwrite(image, f"{filename}", compression=compression)
 
 
+def make_image(
+    shape: Sequence[int],
+    spacing: Optional[Sequence[float]] = None,
+    value: Union[int, float] = 0,
+    pixel_type: itkCType = itk.UC,
+) -> itkImage:
+    """Create image with specified shape and spacing"""
+    dim = len(shape)
+
+    region = itk.ImageRegion[dim]()
+    region.SetSize(shape)
+    region.SetIndex(tuple([0] * dim))
+
+    image = itk.Image[pixel_type, dim].New()
+    image.SetRegions(region)
+    if spacing:
+        if len(shape) != len(spacing):
+            raise ValueError("shape and spacing must have same dimension")
+        image.SetSpacing(spacing)
+    image.Allocate()
+
+    image[:] = value
+    return image
+
+
 def extract_slices(img: Image3, axis: int = 2) -> List[Image2]:
     """Get 2D image slices from 3D image
 
@@ -54,13 +82,14 @@ def extract_slices(img: Image3, axis: int = 2) -> List[Image2]:
 
     region = itk.region(img)
     region.SetSize(axis, 1)
-    _SUBMATRIX = 2
 
     for k in range(size[axis]):
         region.SetIndex(axis, k)
         slices.append(
             itk.extract_image_filter(
-                img, extraction_region=region, direction_collapse_to_strategy=_SUBMATRIX
+                img,
+                extraction_region=region,
+                direction_collapse_to_strategy=_COLLAPSE_STRATGEY_SUBMATRIX,
             )
         )
     return slices
@@ -129,7 +158,7 @@ def pad(img: AnyImage, target_size: tuple = (256, 256), value: float = 0) -> Any
     return img
 
 
-def crop(img: AnyImage, target_size: Sequence[int] = (256, 256)) -> AnyImage:
+def crop_center(img: AnyImage, target_size: Sequence[int] = (256, 256)) -> AnyImage:
     """Crop (2D) image to the target size (centered)"""
     size = itk.size(img)
     delta = [int(max(s, t) - t) for s, t in zip(size, target_size)]
@@ -138,14 +167,30 @@ def crop(img: AnyImage, target_size: Sequence[int] = (256, 256)) -> AnyImage:
         crop_low = [(d + 1) // 2 for d in delta]
         crop_hi = [delta[i] - p for i, p in enumerate(crop_low)]
 
-        _SUBMATRIX = 2
         img = itk.crop_image_filter(
             img,
             lower_boundary_crop_size=crop_low,
             upper_boundary_crop_size=crop_hi,
-            direction_collapse_to_strategy=_SUBMATRIX,
+            direction_collapse_to_strategy=_COLLAPSE_STRATGEY_SUBMATRIX,
         )
     return img
+
+
+def crop(
+    img: AnyImage, target_offset: Sequence[int], target_size: Sequence[int] = (256, 256)
+) -> AnyImage:
+    """Crop (2D) image to the target size/offset"""
+    size = itk.size(img)
+
+    region = itk.region(img)
+    region.SetIndex(target_offset)
+    region.SetSize(target_size)
+
+    return itk.extract_image_filter(
+        img,
+        extraction_region=region,
+        direction_collapse_to_strategy=_COLLAPSE_STRATGEY_SUBMATRIX,
+    )
 
 
 def get_files(

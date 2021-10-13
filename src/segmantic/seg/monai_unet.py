@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 import os
 import glob
 import json
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Sequence
 from pathlib import Path
 
 from .evaluation import confusion_matrix
@@ -43,7 +43,12 @@ from .utils import make_device
 from .visualization import make_random_cmap, plot_confusion_matrix
 
 
-def create_transforms(keys, train=False, num_classes=0, spacing=None):
+def create_transforms(
+    keys: List[str],
+    train: bool = False,
+    num_classes: int = 0,
+    spacing: Sequence[float] = None,
+):
     # loading and normalization
     xforms = [
         LoadImaged(keys=keys),
