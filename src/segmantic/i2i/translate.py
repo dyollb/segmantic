@@ -1,11 +1,12 @@
+from numpy.lib.shape_base import tile
 import torch
 import torchvision.transforms as transforms
 import numpy as np
 import itk
-from typing import Any, List, Tuple, Sequence, overload
+from typing import Any, List, Tuple, Sequence, Union
 from pathlib import Path
 
-from ..prepro.core import crop, make_image, Image3, Image2
+from ..prepro.core import crop, make_image, pixeltype, Image3, Image2
 
 from .pix2pix_cyclegan.models.networks import define_G
 
@@ -72,7 +73,10 @@ def load_cyclegan_generator(model_file_path: Path, device: torch.device):
 
 
 def make_tiles(
-    size: Sequence[int], tile_size: Tuple[int, int], overlap: int = 0
+    size: Sequence[int],
+    tile_size: Tuple[int, int],
+    overlap: int = 0,
+    add_center_tile: bool = False,
 ) -> List[Tuple[int, int]]:
     """Break rectangular region into overlapping tiles of fixed size
 
@@ -80,6 +84,7 @@ def make_tiles(
         size: shape of 2D image
         tile_size: shape of 2D tiles
         overlap: ensure overlap
+        add_center_tile: append centered tile
 
     Returns:
         List[Tuple[int, int]]: list of start indices of tiles
@@ -105,6 +110,13 @@ def make_tiles(
         start[0] += tile_size[0]
         if start[0] + 1 < size[0]:
             start[0] -= overlap
+
+    if add_center_tile:
+        delta = [int(max(s, t) - t) for s, t in zip(size, tile_size)]
+        if any(delta):
+            crop_low = [(d + 1) // 2 for d in delta]
+            tile_indices.append((crop_low[0], crop_low[1]))
+
     return tile_indices
 
 
@@ -147,7 +159,7 @@ def merge_tiles(
 
     example = tiles[0]
     image = make_image(
-        shape=size, spacing=itk.spacing(example), pixel_type=itk.template(example)[1][0]
+        shape=size, spacing=itk.spacing(example), pixel_type=pixeltype(example)
     )
     image_view = itk.array_view_from_image(image)
     for t, start in zip(tiles, tile_indices):
@@ -157,10 +169,25 @@ def merge_tiles(
     return image
 
 
-def translate(img: np.ndarray, model: torch.nn.Module, device: torch.device):
+def translate(
+    img: Union[np.ndarray, List[np.ndarray]],
+    model: torch.nn.Module,
+    device: torch.device,
+) -> np.ndarray:
+    """translate 2D image(s) using the given model
+
+    Args:
+        img: 2D input image / list of images
+        model: generator
+        device: torch.device
+
+    Returns:
+        [np.ndarray]: translated image, batches are concatenated along first dimension
+    """
     from PIL import Image
 
-    img_p = Image.fromarray(img).convert("RGB")
+    to_pil = lambda x: Image.fromarray(x).convert("RGB")
+
     tr = transforms.Compose(
         [
             transforms.Grayscale(1),
@@ -169,23 +196,76 @@ def translate(img: np.ndarray, model: torch.nn.Module, device: torch.device):
         ]
     )
     with torch.no_grad():
-        fake = (
-            model(tr(img_p).to(device).view(1, 1, 256, 256)).detach().cpu().numpy()
-        ).reshape(img.shape)
+        if isinstance(img, list):
+            batch_size = len(img)
+            fake = (
+                model(
+                    torch.cat([tr(to_pil(i)) for i in img]).view(
+                        batch_size, 1, 256, 256
+                    )
+                )
+                .detach()
+                .cpu()
+                .numpy()
+            ).reshape([batch_size, 256, 256])
+        else:
+            fake = (
+                model(tr(to_pil(img)).to(device).view(1, 1, 256, 256))
+                .detach()
+                .cpu()
+                .numpy()
+            ).reshape([256, 256])
     return fake
 
 
 def translate_3d(
     image: Image3, model: torch.nn.Module, axis: int, device: torch.device
-):
-    """Split 3D image along specified axis and do style transfer on each slice"""
-    arr = itk.array_from_image(image)
-    axis = 2 - axis
+) -> Image3:
+    """Split 3D image along specified axis and do style transfer on each slice
+
+    Args:
+        image: 3D input image
+        model: generator
+        axis: axis along which the 3D image is split
+        device: torch.device
+
+    Returns:
+        [Image3]: translated image
+    """
+    output = itk.image_duplicator(image)
+
+    # split into slice views of image
+    axis = 2 - axis  # invert axis
+    arr = itk.array_view_from_image(output)
+    slices = []
     for k in range(arr.shape[axis]):
         if axis == 0:
-            arr[k, :, :] = translate(arr[k, :, :], model, device)
+            slices.append(itk.image_view_from_array(arr[k, :, :]))
         elif axis == 1:
-            arr[:, k, :] = translate(arr[:, k, :], model, device)
+            slices.append(itk.image_view_from_array(arr[:, k, :]))
         else:
-            arr[:, :, k] = translate(arr[:, :, k], model, device)
-    return itk.image_view_from_array(arr)
+            slices.append(itk.image_view_from_array(arr[:, :, k]))
+
+    # tiling only needs to be computed once
+    tile_size = (256, 256)
+    tile_indices = make_tiles(
+        size=itk.size(slices[0]), tile_size=tile_size, overlap=0, add_center_tile=True
+    )
+
+    # translate slices
+    for slice_views in slices:
+        tiles = tile_image(
+            image=slice_views, tile_indices=tile_indices, tile_size=(256, 256)
+        )
+        batch = translate([itk.array_view_from_image(t) for t in tiles], model, device)
+        batch_size = len(tiles)
+        # overwrite slice view
+        slice_views[:] = merge_tiles(
+            tiles=[
+                itk.image_view_from_array(batch[i, :, :]) for i in range(batch_size)
+            ],
+            tile_indices=tile_indices,
+            tile_size=tile_size,
+        )
+
+    return output

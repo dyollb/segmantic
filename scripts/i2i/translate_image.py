@@ -45,7 +45,10 @@ def main(
         return
 
     # TODO: resample/pad
-    preprocess = lambda img: crop_center(img, target_size=(256, 256, 10))
+    crop_size = [1024, 1024, 1024]
+    crop_size[axis] = 50
+
+    preprocess = lambda img: crop_center(img, target_size=crop_size)
     postprocess = lambda img: img
 
     device = make_device(gpu_ids)

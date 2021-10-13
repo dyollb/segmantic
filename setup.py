@@ -28,6 +28,7 @@ def get_cuda_version():
                 return [int(v) for v in version]
     except:
         pass
+    print("\nCould not detected CUDA version\n", file=sys.stderr)
     return [0, 0]
 
 

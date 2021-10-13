@@ -42,13 +42,18 @@ def imwrite(image: itkImage, filename: Path, compression: bool = False) -> None:
     return itk.imwrite(image, f"{filename}", compression=compression)
 
 
+def pixeltype(image: itkImage) -> itkCType:
+    """Get pixel type"""
+    return itk.template(image)[1][0]
+
+
 def make_image(
     shape: Sequence[int],
     spacing: Optional[Sequence[float]] = None,
     value: Union[int, float] = 0,
     pixel_type: itkCType = itk.UC,
 ) -> itkImage:
-    """Create image with specified shape and spacing"""
+    """Create (2D/3D) image with specified shape and spacing"""
     dim = len(shape)
 
     region = itk.ImageRegion[dim]()
@@ -106,7 +111,7 @@ def scale_to_range(img: AnyImage, vmin: float = 0.0, vmax: float = 255.0) -> Any
 
 
 def resample(img: itkImage, target_spacing: Optional[Sequence] = None) -> itkImage:
-    """resample N-D itk. Image to a target spacing
+    """resample (2D/3D) image to a target spacing
 
     Args:
         img (itkImage): input image
@@ -142,7 +147,7 @@ def resample(img: itkImage, target_spacing: Optional[Sequence] = None) -> itkIma
 
 
 def pad(img: AnyImage, target_size: tuple = (256, 256), value: float = 0) -> AnyImage:
-    """Pad (2D) image to the target size"""
+    """Pad (2D/3D) image to the target size"""
     size = itk.size(img)
     delta = [int(t - min(s, t)) for s, t in zip(size, target_size)]
 
@@ -159,7 +164,7 @@ def pad(img: AnyImage, target_size: tuple = (256, 256), value: float = 0) -> Any
 
 
 def crop_center(img: AnyImage, target_size: Sequence[int] = (256, 256)) -> AnyImage:
-    """Crop (2D) image to the target size (centered)"""
+    """Crop (2D/3D) image to the target size (centered)"""
     size = itk.size(img)
     delta = [int(max(s, t) - t) for s, t in zip(size, target_size)]
 
@@ -179,9 +184,7 @@ def crop_center(img: AnyImage, target_size: Sequence[int] = (256, 256)) -> AnyIm
 def crop(
     img: AnyImage, target_offset: Sequence[int], target_size: Sequence[int] = (256, 256)
 ) -> AnyImage:
-    """Crop (2D) image to the target size/offset"""
-    size = itk.size(img)
-
+    """Crop (2D/3D) image to the target size/offset"""
     region = itk.region(img)
     region.SetIndex(target_offset)
     region.SetSize(target_size)
