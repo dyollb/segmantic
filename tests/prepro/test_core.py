@@ -44,15 +44,7 @@ def test_pad_crop(labelfield: core.Image3):
 
 
 def test_resample():
-    region = itk.ImageRegion[2]()
-    region.SetSize((3, 3))
-
-    image = itk.Image[itk.F, 2].New()
-    image.SetRegions(region)
-    image.SetSpacing((2.0, 2.0))
-    image.Allocate()
-
-    image[:] = 1.0
+    image = make_image(shape=(3, 3), spacing=(2.0, 2.0), value=1.0, pixel_type=itk.F)
     image[1, 1] = 0.0
 
     # double the resolution from (2.0, 2.0) to (1.0, 1.0)

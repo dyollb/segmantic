@@ -7,6 +7,7 @@ from typing import List
 import segmantic
 from segmantic.prepro.core import crop
 from segmantic.i2i.translate import load_pix2pix_generator, translate_3d
+from segmantic.seg.utils import make_device
 
 
 def preprocess_mri(x):
@@ -41,14 +42,14 @@ def main(
         segmantic.imwrite(crop(segmantic.imread(input), target_size=crop_size), output)
         return
 
-    # resample/pad
+    # TODO: resample/pad
     preprocess = lambda img: crop(img, target_size=(256, 256, 10))
     postprocess = lambda img: img
 
+    device = make_device(gpu_ids)
+
     # load model
-    netg, device = load_pix2pix_generator(
-        model_file_path=model, gpu_ids=gpu_ids, eval=False
-    )
+    netg = load_pix2pix_generator(model_file_path=model, device=device, eval=False)
 
     # load input image
     img_t1 = segmantic.imread(input)

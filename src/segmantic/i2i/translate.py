@@ -2,22 +2,22 @@ import torch
 import torchvision.transforms as transforms
 import numpy as np
 import itk
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, Sequence
 from pathlib import Path
 
-from ..prepro.core import crop, scale_to_range, Image3
+from ..prepro.core import crop, scale_to_range, Image3, Image2
 
 from .pix2pix_cyclegan.models.networks import define_G
 
 
 def load_pix2pix_generator(
-    model_file_path: Path, gpu_ids: List[int] = [], eval: bool = False
-) -> Tuple[Any, torch.device]:
+    model_file_path: Path, device: torch.device, eval: bool = False
+) -> Any:
     """Load a trained pix2pix model
 
     Args:
         model_file_path (Path): Trained pix2pix model file (.pth)
-        gpu_ids (List[int], optional): For selecting the GPU. Defaults to [].
+        device (torch.device): For selecting GPU index or CPU
         eval (bool, optional): Run in eval mode. Defaults to False.
 
     Returns:
@@ -32,20 +32,15 @@ def load_pix2pix_generator(
         use_dropout=True,
         init_type="normal",
         init_gain=0.02,
-        gpu_ids=gpu_ids,
-    )
-
-    # get device name: CPU or GPU
-    device = (
-        torch.device("cuda:{}".format(gpu_ids[0])) if gpu_ids else torch.device("cpu")
+        gpu_ids=[device.index] if device.index else [],
     )
 
     if isinstance(gen, torch.nn.DataParallel):
         gen = gen.module
+
     print(f"loading the model from {model_file_path}")
 
-    # if you are using PyTorch newer than 0.4, you can remove str() on self.device
-    state_dict = torch.load(model_file_path, map_location=str(device))
+    state_dict = torch.load(model_file_path, map_location=device)
     if hasattr(state_dict, "_metadata"):
         del state_dict._metadata
     gen.load_state_dict(state_dict)
@@ -53,10 +48,10 @@ def load_pix2pix_generator(
     # dropout and batchnorm has different behavioir during training and test.
     if eval:
         gen.eval()
-    return gen, device
+    return gen
 
 
-def load_cyclegan_generator(model_file_path: Path, gpu_ids: List[int] = []):
+def load_cyclegan_generator(model_file_path: Path, device: torch.device):
     gen = define_G(
         input_nc=1,
         output_nc=1,
@@ -66,20 +61,63 @@ def load_cyclegan_generator(model_file_path: Path, gpu_ids: List[int] = []):
         use_dropout=False,
         init_type="normal",
         init_gain=0.02,
-        gpu_ids=gpu_ids,
+        gpu_ids=[device.index] if device.index else [],
     )
 
-    # get device name: CPU or GPU
-    device = (
-        torch.device("cuda:{}".format(gpu_ids[0])) if gpu_ids else torch.device("cpu")
-    )
-
-    # if you are using PyTorch newer than 0.4, you can remove str() on self.device
-    state_dict = torch.load(model_file_path, map_location=str(device))
+    state_dict = torch.load(model_file_path, map_location=device)
     if hasattr(state_dict, "_metadata"):
         del state_dict._metadata
     gen.load_state_dict(state_dict)
     return gen
+
+
+def make_tiles(
+    size: Sequence[int], tile_size: Tuple[int, int], overlap: int = 2
+) -> List[Tuple[int, int]]:
+    """Break image into tiles of fixed size
+
+    Args:
+        size: shape of 2D image
+        tile_size: shape of 2D tiles
+        overlap: ensure overlap
+
+    Returns:
+        List[Tuple[int, int]]: list of start indices of tiles
+    """
+    if size[0] < tile_size[0] and size[1] < tile_size[1]:
+        return [(0, 0)]
+
+    # ensure we don't go over end
+    fix_tile = lambda start: (
+        max(min(start[0], size[0] - tile_size[0]), 0),
+        max(min(start[1], size[1] - tile_size[1]), 0),
+    )
+
+    tiles = []
+    start = [0, 0]
+    while start[0] < size[0]:
+        start[1] = 0
+        while start[1] < size[1]:
+            tiles.append(fix_tile(start))
+            start[1] += tile_size[1] - overlap
+        start[0] += tile_size[0] - overlap
+    return tiles
+
+
+def tile_image(
+    image: Image2, tiles: List[Tuple[int, int]], tile_size: Tuple[int, int]
+) -> List[Image2]:
+    image_view = itk.array_view_from_image(image)
+    patches = []
+    for start in tiles:
+        patch = image_view[
+            start[1] : start[1] + tile_size[1], start[0] : start[0] + tile_size[0]
+        ]
+        patch = itk.image_from_array(patch)
+        patch["spacing"] = image["spacing"]
+        # patch['origin'] = image['origin'] + image['spacing']
+        patches.append(crop(image, target_size=tile_size))
+    return patches
 
 
 def translate(img: np.ndarray, model: torch.nn.Module, device: torch.device):
