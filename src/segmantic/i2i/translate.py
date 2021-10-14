@@ -65,6 +65,11 @@ def load_cyclegan_generator(model_file_path: Path, device: torch.device):
         gpu_ids=[device.index] if device.index else [],
     )
 
+    if isinstance(gen, torch.nn.DataParallel):
+        gen = gen.module
+
+    print(f"loading the model from {model_file_path}")
+
     state_dict = torch.load(model_file_path, map_location=device)
     if hasattr(state_dict, "_metadata"):
         del state_dict._metadata

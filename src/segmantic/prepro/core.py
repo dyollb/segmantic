@@ -32,6 +32,10 @@ def as_array(x: AnyImage) -> np.ndarray:
     return itk.array_from_image(x)
 
 
+def array_view_reverse_ordering(x: np.ndarray):
+    return x.transpose(np.flip(np.arange(len(x.shape))))
+
+
 def imread(filename: Path) -> itkImage:
     """Wrapper around itk.imread to avoid having to convert Path to str"""
     return itk.imread(f"{filename}")
