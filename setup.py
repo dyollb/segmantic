@@ -19,7 +19,7 @@ def read_reqs(reqs_path: Path):
 
 
 def get_cuda_version():
-    with suppress(UnicodeDecodeError):
+    with suppress(UnicodeDecodeError, FileNotFoundError):
         out = check_output(["nvidia-smi"]).decode("utf-8")
         if match := re.search(r"CUDA Version:\s+(\d+).(\d+)", out):
             version = tuple(int(c) for c in match.groups())
