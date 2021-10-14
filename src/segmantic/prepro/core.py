@@ -13,7 +13,7 @@ from itk.support.types import itkCType
 itkImage = Union[Image2, Image3]
 ImageOrArray = Union[Image2, Image3, np.ndarray]
 
-_COLLAPSE_STRATGEY_SUBMATRIX = 2
+_COLLAPSE_STRATEGY_SUBMATRIX = 2
 
 
 def identity(x: AnyImage) -> AnyImage:
@@ -32,7 +32,7 @@ def as_array(x: AnyImage) -> np.ndarray:
     return itk.array_from_image(x)
 
 
-def array_view_reverse_ordering(x: np.ndarray):
+def array_view_reverse_ordering(x: np.ndarray) -> np.ndarray:
     return x.transpose(np.flip(np.arange(len(x.shape))))
 
 
@@ -98,7 +98,7 @@ def extract_slices(img: Image3, axis: int = 2) -> List[Image2]:
             itk.extract_image_filter(
                 img,
                 extraction_region=region,
-                direction_collapse_to_strategy=_COLLAPSE_STRATGEY_SUBMATRIX,
+                direction_collapse_to_strategy=_COLLAPSE_STRATEGY_SUBMATRIX,
             )
         )
     return slices
@@ -150,10 +150,12 @@ def resample(img: itkImage, target_spacing: Optional[Sequence] = None) -> itkIma
     return resampled
 
 
-def pad(img: AnyImage, target_size: tuple = (256, 256), value: float = 0) -> AnyImage:
+def pad(
+    img: AnyImage, target_size: Sequence[int] = (256, 256), value: float = 0
+) -> AnyImage:
     """Pad (2D/3D) image to the target size"""
     size = itk.size(img)
-    delta = [int(t - min(s, t)) for s, t in zip(size, target_size)]
+    delta = [t - min(s, t) for s, t in zip(size, target_size)]
 
     if any(delta):
         pad_lo = [(d + 1) // 2 for d in delta]
@@ -170,7 +172,7 @@ def pad(img: AnyImage, target_size: tuple = (256, 256), value: float = 0) -> Any
 def crop_center(img: AnyImage, target_size: Sequence[int] = (256, 256)) -> AnyImage:
     """Crop (2D/3D) image to the target size (centered)"""
     size = itk.size(img)
-    delta = [int(max(s, t) - t) for s, t in zip(size, target_size)]
+    delta = [max(s, t) - t for s, t in zip(size, target_size)]
 
     if any(delta):
         crop_low = [(d + 1) // 2 for d in delta]
@@ -180,7 +182,7 @@ def crop_center(img: AnyImage, target_size: Sequence[int] = (256, 256)) -> AnyIm
             img,
             lower_boundary_crop_size=crop_low,
             upper_boundary_crop_size=crop_hi,
-            direction_collapse_to_strategy=_COLLAPSE_STRATGEY_SUBMATRIX,
+            direction_collapse_to_strategy=_COLLAPSE_STRATEGY_SUBMATRIX,
         )
     return img
 
@@ -196,7 +198,7 @@ def crop(
     return itk.extract_image_filter(
         img,
         extraction_region=region,
-        direction_collapse_to_strategy=_COLLAPSE_STRATGEY_SUBMATRIX,
+        direction_collapse_to_strategy=_COLLAPSE_STRATEGY_SUBMATRIX,
     )
 
 

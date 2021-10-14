@@ -10,19 +10,22 @@ from ..prepro.core import crop, make_image, pixeltype, Image3, Image2
 
 from .pix2pix_cyclegan.models.networks import define_G
 
+Pix2PixGenerator = Any
+CycleGanGenerator = Any
+
 
 def load_pix2pix_generator(
     model_file_path: Path, device: torch.device, eval: bool = False
-) -> Any:
+) -> Pix2PixGenerator:
     """Load a trained pix2pix model
 
     Args:
-        model_file_path (Path): Trained pix2pix model file (.pth)
-        device (torch.device): For selecting GPU index or CPU
-        eval (bool, optional): Run in eval mode. Defaults to False.
+        model_file_path: Trained pix2pix model file (.pth)
+        device: For selecting GPU index or CPU
+        eval: Run in eval mode. Defaults to False.
 
     Returns:
-        Tuple[Any, torch.device]: Returns the generator and torch device
+        Returns the generator
     """
     gen = define_G(
         input_nc=1,
@@ -52,7 +55,18 @@ def load_pix2pix_generator(
     return gen
 
 
-def load_cyclegan_generator(model_file_path: Path, device: torch.device):
+def load_cyclegan_generator(
+    model_file_path: Path, device: torch.device
+) -> CycleGanGenerator:
+    """Load a trained cyclegan model
+
+    Args:
+        model_file_path: Trained cyclegan model file (.pth)
+        device: For selecting GPU index or CPU
+
+    Returns:
+        Returns the generator
+    """
     gen = define_G(
         input_nc=1,
         output_nc=1,
@@ -92,7 +106,7 @@ def make_tiles(
         add_center_tile: append centered tile
 
     Returns:
-        List[Tuple[int, int]]: list of start indices of tiles
+        list of start indices of tiles
     """
     if size[0] < tile_size[0] and size[1] < tile_size[1]:
         return [(0, 0)]
@@ -117,7 +131,7 @@ def make_tiles(
             start[0] -= overlap
 
     if add_center_tile:
-        delta = [int(max(s, t) - t) for s, t in zip(size, tile_size)]
+        delta = [max(s, t) - t for s, t in zip(size, tile_size)]
         if any(delta):
             crop_low = [(d + 1) // 2 for d in delta]
             tile_indices.append((crop_low[0], crop_low[1]))
@@ -136,12 +150,12 @@ def tile_image(
         tile_size: fixed size of tiles
 
     Returns:
-        List[Image2]: image tiles
+        image tiles
     """
-    tiles = []
-    for start in tile_indices:
-        tiles.append(crop(image, target_offset=start, target_size=tile_size))
-    return tiles
+    return [
+        crop(image, target_offset=start, target_size=tile_size)
+        for start in tile_indices
+    ]
 
 
 def merge_tiles(
@@ -155,7 +169,7 @@ def merge_tiles(
         tile_size: fixed size of tiles
 
     Returns:
-        [Image2]: merged image
+        merged image
     """
     size = [0, 0]
     for t in tile_indices:
@@ -187,7 +201,7 @@ def translate(
         device: torch.device
 
     Returns:
-        [np.ndarray]: translated image, batches are concatenated along first dimension
+        translated image, batches are concatenated along first dimension
     """
     from PIL import Image
 
@@ -235,7 +249,7 @@ def translate_3d(
         device: torch.device
 
     Returns:
-        [Image3]: translated image
+        translated image
     """
     output = itk.image_duplicator(image)
 
