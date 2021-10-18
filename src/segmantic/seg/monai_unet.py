@@ -33,17 +33,22 @@ import pytorch_lightning.loggers
 from pytorch_lightning.callbacks import ModelCheckpoint
 import matplotlib.pyplot as plt
 import os
-import glob
 import json
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Sequence
 from pathlib import Path
 
 from .evaluation import confusion_matrix
 from .utils import make_device
+from .dataset import DataSet
 from .visualization import make_random_cmap, plot_confusion_matrix
 
 
-def create_transforms(keys, train=False, num_classes=0, spacing=None):
+def create_transforms(
+    keys: List[str],
+    train: bool = False,
+    num_classes: int = 0,
+    spacing: Sequence[float] = None,
+):
     # loading and normalization
     xforms = [
         LoadImaged(keys=keys),
@@ -84,9 +89,7 @@ class Net(pytorch_lightning.LightningModule):
     def __init__(
         self,
         n_classes: int,
-        image_dir: Path = Path(""),
-        labels_dir: Path = Path(""),
-        model_file_name: Path = Path(""),
+        dataset: Optional[DataSet] = None,
     ):
         super().__init__()
         self._model = UNet(
@@ -99,9 +102,7 @@ class Net(pytorch_lightning.LightningModule):
             norm=Norm.BATCH,
         )
         self.num_classes = n_classes
-        self.image_dir = image_dir
-        self.labels_dir = labels_dir
-        self.model_file_name = model_file_name
+        self.dataset = dataset
         self.loss_function = DiceLoss(to_onehot_y=True, softmax=True)
         self.post_pred = Compose(
             [EnsureType(), AsDiscrete(argmax=True, to_onehot=True, n_classes=n_classes)]
@@ -114,23 +115,17 @@ class Net(pytorch_lightning.LightningModule):
         )
         self.best_val_dice = 0
         self.best_val_epoch = 0
-        # self.save_hyperparameters("n_classes")
+        self.save_hyperparameters("n_classes")
+
+    def set_dataset(self, dataset: DataSet):
+        self.dataset = dataset
 
     def forward(self, x):
         return self._model(x)
 
     def prepare_data(self) -> None:
-        # set up the correct data path
-        train_images = sorted(self.image_dir.glob("*.nii.gz"))
-        train_labels = sorted(self.labels_dir.glob("*.nii.gz"))
-        data_dicts = [
-            {"image": image_name, "label": label_name}
-            for image_name, label_name in zip(train_images, train_labels)
-        ]
-
-        # use first 4 files for validation, rest for training
-        # todo: make this configurable/not hard-coded
-        train_files, val_files = data_dicts[4:], data_dicts[:4]
+        if not self.dataset:
+            raise RuntimeError("The dataset is not set")
 
         # set deterministic training for reproducibility
         set_determinism(seed=0)
@@ -143,13 +138,13 @@ class Net(pytorch_lightning.LightningModule):
 
         # we use cached datasets - these are 10x faster than regular datasets
         self.train_ds = CacheDataset(
-            data=train_files,
+            data=self.dataset.training_files(),
             transform=train_transforms,
             cache_rate=1.0,
             num_workers=0,
         )
         self.val_ds = CacheDataset(
-            data=val_files,
+            data=self.dataset.validation_files(),
             transform=val_transforms,
             cache_rate=1.0,
             num_workers=0,
@@ -235,7 +230,10 @@ def train(
     """Run the training"""
 
     # initialise the LightningModule
-    net = Net(n_classes=num_classes, image_dir=image_dir, labels_dir=labels_dir)
+    net = Net(
+        n_classes=num_classes,
+        dataset=DataSet(image_dir=image_dir, labels_dir=labels_dir),
+    )
 
     # set up loggers and checkpoints
     tb_logger = pytorch_lightning.loggers.TensorBoardLogger(save_dir=f"{log_dir}")

@@ -1,24 +1,15 @@
 import itk
-from typing import Sequence
 
-from segmantic.prepro.core import Image3
+import pytest
+from segmantic.prepro.core import make_image, Image3
 
 
-def make_image(
-    shape: Sequence[int], spacing: Sequence[float], value: int = 0
-) -> Image3:
-    """Create image with specified shape and spacing"""
-    assert len(shape) == len(spacing)
-    dim = len(shape)
-
-    region = itk.ImageRegion[dim]()
-    region.SetSize(shape)
-    region.SetIndex(tuple([0] * dim))
-
-    image = itk.Image[itk.UC, dim].New()
-    image.SetRegions(region)
-    image.SetSpacing(spacing)
-    image.Allocate()
-
-    image[:] = value
+@pytest.fixture
+def labelfield() -> Image3:
+    """3D labelfield, where each XY slice has a uniform label = slice number"""
+    image = make_image(shape=(5, 5, 5), spacing=(0.5, 0.6, 0.7))
+    view = itk.array_view_from_image(image)
+    for i in range(5):
+        # note: itk exposes the x-fastest array to numpy in c-order, i.e. view[z,y,x]
+        view[i, :, :] = i
     return image

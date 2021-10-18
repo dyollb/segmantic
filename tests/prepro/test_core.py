@@ -3,18 +3,7 @@ import numpy as np
 
 import pytest
 from segmantic.prepro import core
-from tests.fixture import make_image
-
-
-@pytest.fixture
-def labelfield() -> core.Image3:
-    """3D labelfield, where each slice has a uniform label = slice number"""
-    image = make_image(shape=(5, 5, 5), spacing=(0.5, 0.6, 0.7))
-    view = itk.array_view_from_image(image)
-    for i in range(5):
-        # note: itk exposes the x-fastest array to numpy in c-order, i.e. view[z,y,x]
-        view[i, :, :] = i
-    return image
+from tests.fixture import make_image, labelfield
 
 
 def test_extract_slices(labelfield: core.Image3):
@@ -30,29 +19,21 @@ def test_extract_slices(labelfield: core.Image3):
         assert np.all(slice_view == k)
 
 
-def test_pad_crop(labelfield: core.Image3):
+def test_pad_crop_center(labelfield: core.Image3):
     padded = core.pad(labelfield, target_size=(9, 9, 9))
-    cropped = core.crop(padded, target_size=(5, 5, 5))
+    cropped = core.crop_center(padded, target_size=(5, 5, 5))
 
     assert labelfield.GetSpacing() == cropped.GetSpacing()
     assert labelfield.GetOrigin() == cropped.GetOrigin()
     assert np.all(core.as_array(cropped) == core.as_array(labelfield))
 
-    slice = core.crop(labelfield, target_size=(5, 5, 1))
+    slice = core.crop_center(labelfield, target_size=(5, 5, 1))
     size = itk.size(slice)
     assert size[2] == 1
 
 
 def test_resample():
-    region = itk.ImageRegion[2]()
-    region.SetSize((3, 3))
-
-    image = itk.Image[itk.F, 2].New()
-    image.SetRegions(region)
-    image.SetSpacing((2.0, 2.0))
-    image.Allocate()
-
-    image[:] = 1.0
+    image = make_image(shape=(3, 3), spacing=(2.0, 2.0), value=1.0, pixel_type=itk.F)
     image[1, 1] = 0.0
 
     # double the resolution from (2.0, 2.0) to (1.0, 1.0)
