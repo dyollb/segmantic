@@ -16,16 +16,20 @@ def get_nifti_files(dir: Path) -> List[Path]:
 
 def main(
     image_dir: Path = typer.Option(
-        ..., "--image_dir", "-i", help="directory containing images"
+        ..., "--image-dir", "-i", help="directory containing images"
     ),
     labels_dir: Path = typer.Option(
-        ..., "--labels_dir", "-l", help="directory containing labelfields"
+        ..., "--labels-dir", "-l", help="directory containing labelfields"
     ),
     tissue_list: Path = typer.Option(
-        ..., "--tissue_list", help="label descriptors in iSEG format"
+        ..., "--tissue-list", "-t", help="label descriptors in iSEG format"
     ),
-    results_dir: Path = Path("results"),
+    results_dir: Path = typer.Option(
+        Path("results"), "--results-dir", "-r", help="output directory"
+    ),
     predict: bool = False,
+    num_channels: int = 1,
+    max_epochs: int = 600,
     gpu_ids: List[int] = [0],
 ):
     """Train UNet or predict segmentation
@@ -62,8 +66,9 @@ def main(
             labels_dir=labels_dir,
             log_dir=log_dir,
             num_classes=num_classes,
+            num_channels=num_channels,
             model_file_name=model_file,
-            max_epochs=600,
+            max_epochs=max_epochs,
             output_dir=results_dir,
             save_nifti=True,
             gpu_ids=gpu_ids,
