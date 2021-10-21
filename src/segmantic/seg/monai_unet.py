@@ -4,6 +4,7 @@ from monai.transforms import (
     AsDiscrete,
     AsDiscreted,
     AddChanneld,
+    EnsureChannelFirstd,
     Compose,
     CropForegroundd,
     LoadImaged,
@@ -51,8 +52,9 @@ def create_transforms(
 ):
     # loading and normalization
     xforms = [
-        LoadImaged(keys=keys),
-        AddChanneld(keys=keys),
+        LoadImaged(keys=keys, reader="itkreader"),
+        AddChanneld(keys="label"),
+        EnsureChannelFirstd(keys="image"),
         Orientationd(keys=keys, axcodes="RAS"),
         NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
         CropForegroundd(keys=keys, source_key="image"),
@@ -88,34 +90,38 @@ def create_transforms(
 class Net(pytorch_lightning.LightningModule):
     def __init__(
         self,
-        n_classes: int,
+        num_classes: int,
+        num_channels: int = 1,
         dataset: Optional[DataSet] = None,
     ):
         super().__init__()
         self._model = UNet(
             spatial_dims=3,
-            in_channels=1,
-            out_channels=n_classes,
+            in_channels=num_channels,
+            out_channels=num_classes,
             channels=(16, 32, 64, 128, 256),
             strides=(2, 2, 2, 2),
             num_res_units=2,
             norm=Norm.BATCH,
         )
-        self.num_classes = n_classes
+        self.num_classes = num_classes
         self.dataset = dataset
         self.loss_function = DiceLoss(to_onehot_y=True, softmax=True)
         self.post_pred = Compose(
-            [EnsureType(), AsDiscrete(argmax=True, to_onehot=True, n_classes=n_classes)]
+            [
+                EnsureType(),
+                AsDiscrete(argmax=True, to_onehot=True, n_classes=num_classes),
+            ]
         )
         self.post_label = Compose(
-            [EnsureType(), AsDiscrete(to_onehot=True, n_classes=n_classes)]
+            [EnsureType(), AsDiscrete(to_onehot=True, n_classes=num_classes)]
         )
         self.dice_metric = DiceMetric(
             include_background=False, reduction="mean", get_not_nans=False
         )
         self.best_val_dice = 0
         self.best_val_epoch = 0
-        self.save_hyperparameters("n_classes")
+        self.save_hyperparameters("num_classes", "num_channels")
 
     def set_dataset(self, dataset: DataSet):
         self.dataset = dataset
@@ -221,6 +227,7 @@ def train(
     labels_dir: Path,
     log_dir: Path,
     num_classes: int,
+    num_channels: int,
     model_file_name: Path,
     output_dir: Path,
     max_epochs: int = 600,
@@ -228,10 +235,10 @@ def train(
     gpu_ids: list = [],
 ):
     """Run the training"""
-
     # initialise the LightningModule
     net = Net(
-        n_classes=num_classes,
+        num_classes=num_classes,
+        num_channels=num_channels,
         dataset=DataSet(image_dir=image_dir, labels_dir=labels_dir),
     )
 
@@ -265,7 +272,7 @@ def train(
         f"at epoch {net.best_val_epoch}"
     )
 
-    settings = {"num_classes": num_classes}
+    settings = {"num_classes": num_classes, "num_channels": num_channels}
     with model_file_name.with_suffix(".json").open("w") as json_file:
         json.dump(settings, json_file)
 
@@ -330,8 +337,14 @@ def predict(
     with model_file.with_suffix(".json").open() as json_file:
         settings = json.load(json_file)
         num_classes = settings["num_classes"]
+        if "num_channels" in settings:
+            num_channels = settings["num_channels"]
+        else:
+            num_channels = 1
 
-    net = Net.load_from_checkpoint(f"{model_file}", n_classes=num_classes)
+    net = Net.load_from_checkpoint(
+        f"{model_file}", num_classes=num_classes, num_channels=num_channels
+    )
 
     net.eval()
     device = make_device(gpu_ids)
@@ -432,7 +445,7 @@ def predict(
 
             if test_labels:
                 val_pred = val_pred.argmax(dim=1, keepdim=True)
-                val_labels = test_data["label"].to(device)
+                val_labels = test_data["label"].to(device).long()
 
                 d = dice_metric(y_pred=to_one_hot(val_pred), y=to_one_hot(val_labels))
                 print("Class Dice = ", d)
@@ -443,7 +456,10 @@ def predict(
                 print("Conf. Matrix Metrics = ", conf_matrix.aggregate())
 
                 filename_or_obj = test_data["image_meta_dict"]["filename_or_obj"]
+                if filename_or_obj and isinstance(filename_or_obj, list):
+                    filename_or_obj = filename_or_obj[0]
                 if filename_or_obj:
+
                     base = Path(filename_or_obj).with_suffix("").name
                     c = confusion_matrix(
                         num_classes=num_classes,
