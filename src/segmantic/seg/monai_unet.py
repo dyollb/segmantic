@@ -10,6 +10,10 @@ from monai.transforms import (
     LoadImaged,
     Orientationd,
     RandCropByLabelClassesd,
+    RandAdjustContrastd,
+    RandHistogramShiftd,
+    RandGibbsNoised,
+    RandKSpaceSpikeNoised,
     RandFlipd,
     RandAffined,
     NormalizeIntensityd,
@@ -71,6 +75,16 @@ def create_transforms(
                 RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=0),
                 RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=1),
                 RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=2),
+            ]
+        )
+        # Intensity/Noise augmentations
+        xforms.extend(
+            [
+                RandAdjustContrastd(keys=["image"], prob=0.2, gamma=(0.5, 4.5)),
+                RandHistogramShiftd(keys=["image"], prob=0.2, num_control_points=10),
+                RandGibbsNoised(keys=["image"], prob=0.2, alpha=(0.0, 1.0)),
+                RandKSpaceSpikeNoised(keys=["image"], global_prob=0.1, prob=0.2)
+
             ]
         )
         if num_classes > 0:
