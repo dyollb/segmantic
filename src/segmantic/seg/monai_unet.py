@@ -22,6 +22,7 @@ from monai.transforms import (
     Activationsd,
     SaveImaged,
     Invertd,
+    SqueezeDimd,
 )
 from monai.networks.nets import UNet
 from monai.networks.layers import Norm
@@ -59,6 +60,7 @@ def create_transforms(
         LoadImaged(keys=keys, reader="itkreader"),
         AddChanneld(keys="label"),
         EnsureChannelFirstd(keys="image"),
+        SqueezeDimd(keys="image", dim=4),
         Orientationd(keys=keys, axcodes="RAS"),
         NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
         CropForegroundd(keys=keys, source_key="image"),
