@@ -23,6 +23,10 @@ from monai.transforms import (
     SaveImaged,
     Invertd,
     SqueezeDimd,
+    RandRotated,
+    RandZoomd,
+    Rand3DElasticd,
+    
 )
 from monai.networks.nets import UNet
 from monai.networks.layers import Norm
@@ -89,6 +93,16 @@ def create_transforms(
 
             ]
         )
+        # Spatial augmentation
+        xforms.extend(
+            [
+                RandRotated(keys=["image", "label"], prob=0.2, range_x=0.4),
+                RandRotated(keys=["image", "label"], prob=0.2, range_y=0.4),
+                RandRotated(keys=["image", "label"], prob=0.2, range_z=0.4),
+                RandZoomd(keys=["image", "label"], prob=0.2, min_zoom=0.8, max_zoom=1.3),
+                Rand3DElasticd(keys=["image", "label"], prob=0.2, sigma_range=(5, 7), magnitude_range=(50, 150)),
+
+            ]
         if num_classes > 0:
             xforms.append(
                 RandCropByLabelClassesd(
