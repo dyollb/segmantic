@@ -150,6 +150,33 @@ def resample(img: itkImage, target_spacing: Optional[Sequence] = None) -> itkIma
     return resampled
 
 
+def resample_to_ref(img: itkImage, ref: itkImage) -> itkImage:
+    """resample (2D/3D) image to a reference grid
+
+    Args:
+        img: input image
+        ref: reference image
+
+    Returns:
+        itkImage: resampled image
+    """
+    dim = img.GetImageDimension()
+    interpolator = itk.LinearInterpolateImageFunction.New(img)
+    transform = itk.IdentityTransform[itk.D, dim].New()
+
+    # resample to target resolution
+    resampled = itk.resample_image_filter(
+        img,
+        transform=transform,
+        interpolator=interpolator,
+        size=itk.size(ref),
+        output_spacing=itk.spacing(ref),
+        output_origin=itk.origin(ref),
+        output_direction=ref.GetDirection(),
+    )
+    return resampled
+
+
 def pad(
     img: AnyImage, target_size: Sequence[int] = (256, 256), value: float = 0
 ) -> AnyImage:
