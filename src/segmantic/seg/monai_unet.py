@@ -64,7 +64,7 @@ def create_transforms(
         LoadImaged(keys=keys, reader="itkreader"),
         AddChanneld(keys="label"),
         EnsureChannelFirstd(keys="image"),
-        SqueezeDimd(keys="image", dim=4),
+        #SqueezeDimd(keys="image", dim=4),
         Orientationd(keys=keys, axcodes="RAS"),
         NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
         CropForegroundd(keys=keys, source_key="image"),
@@ -96,13 +96,14 @@ def create_transforms(
         # Spatial augmentation
         xforms.extend(
             [
-                RandRotated(keys=["image", "label"], prob=0.2, range_x=0.4),
-                RandRotated(keys=["image", "label"], prob=0.2, range_y=0.4),
-                RandRotated(keys=["image", "label"], prob=0.2, range_z=0.4),
-                RandZoomd(keys=["image", "label"], prob=0.2, min_zoom=0.8, max_zoom=1.3),
-                Rand3DElasticd(keys=["image", "label"], prob=0.2, sigma_range=(5, 7), magnitude_range=(50, 150)),
+                RandRotated(keys=["image", "label"], prob=0.2, range_x=0.4, mode=['bilinear', 'nearest']),
+                RandRotated(keys=["image", "label"], prob=0.2, range_y=0.4, mode=['bilinear', 'nearest']),
+                RandRotated(keys=["image", "label"], prob=0.2, range_z=0.4, mode=['bilinear', 'nearest']),
+                RandZoomd(keys=["image", "label"], prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=['area', 'nearest']),
+                #Rand3DElasticd(keys=["image", "label"], prob=0.2, sigma_range=(5, 7), magnitude_range=(50, 150), mode=['bilinear', 'nearest']),
 
             ]
+        )
         if num_classes > 0:
             xforms.append(
                 RandCropByLabelClassesd(
