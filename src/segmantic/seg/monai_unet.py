@@ -53,12 +53,13 @@ def create_transforms(
     # loading and normalization
     xforms = [
         LoadImaged(keys=keys, reader="itkreader"),
-        AddChanneld(keys="label"),
         EnsureChannelFirstd(keys="image"),
         Orientationd(keys=keys, axcodes="RAS"),
         NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
         CropForegroundd(keys=keys, source_key="image"),
     ]
+    if "label" in keys:
+        xforms.insert(1, AddChanneld(keys="label"))
 
     # resample
     if spacing:

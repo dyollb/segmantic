@@ -19,7 +19,7 @@ def main(
         ..., "--image-dir", "-i", help="directory containing images"
     ),
     labels_dir: Path = typer.Option(
-        ..., "--labels-dir", "-l", help="directory containing labelfields"
+        None, "--labels-dir", "-l", help="directory containing labelfields"
     ),
     tissue_list: Path = typer.Option(
         ..., "--tissue-list", "-t", help="label descriptors in iSEG format"
