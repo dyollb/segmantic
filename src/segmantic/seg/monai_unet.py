@@ -94,6 +94,7 @@ def create_transforms(
             ]
         )
         # Spatial augmentation
+        """
         xforms.extend(
             [
                 RandRotated(keys=["image", "label"], prob=0.2, range_x=0.4, mode=['bilinear', 'nearest']),
@@ -103,7 +104,9 @@ def create_transforms(
                 #Rand3DElasticd(keys=["image", "label"], prob=0.2, sigma_range=(5, 7), magnitude_range=(50, 150), mode=['bilinear', 'nearest']),
 
             ]
+            print('spatial augmentation added')
         )
+        """
         if num_classes > 0:
             xforms.append(
                 RandCropByLabelClassesd(
