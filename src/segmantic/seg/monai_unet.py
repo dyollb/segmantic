@@ -11,11 +11,9 @@ from monai.transforms import (
     Orientationd,
     RandCropByLabelClassesd,
     RandFlipd,
-    RandAffined,
     NormalizeIntensityd,
     EnsureTyped,
     EnsureType,
-    Activationsd,
     SaveImaged,
     Invertd,
 )
@@ -25,8 +23,8 @@ from monai.metrics import DiceMetric, ConfusionMatrixMetric
 from monai.losses import DiceLoss
 from monai.inferers import sliding_window_inference
 from monai.data import CacheDataset, list_data_collate, decollate_batch, NiftiSaver
-from monai.config import print_config
 from monai.networks.utils import one_hot
+import numpy as np
 import torch
 import torch.utils.data
 import pytorch_lightning
@@ -69,7 +67,6 @@ class Net(pytorch_lightning.LightningModule):
         self.post_pred = Compose(
             [
                 EnsureType(),
-                # TODO: why argmax=True AND to_onehot=True?
                 AsDiscrete(argmax=True, to_onehot=True, n_classes=num_classes),
             ]
         )
@@ -139,6 +136,7 @@ class Net(pytorch_lightning.LightningModule):
                     spatial_size=spatial_size,
                     num_classes=self.num_classes,
                     num_samples=4,
+                    image_threshold=-np.inf,
                 )
             )
         return Compose(xforms + [EnsureTyped(keys=keys)])
