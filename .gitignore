@@ -143,3 +143,7 @@ cython_debug/
 
 # mkdoc outputs
 site
+
+
+# unversioned files
+unversioned/
