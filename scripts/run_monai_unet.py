@@ -1,9 +1,8 @@
-from monai.config import print_config
-import os
 import json
+import inspect
 import typer
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from segmantic.prepro.labels import load_tissue_list
 from segmantic.seg import monai_unet
@@ -18,6 +17,39 @@ def get_nifti_files(dir: Path) -> List[Path]:
 
 
 @app.command()
+def train_config(
+    config_file: Path = typer.Option(
+        ..., "--config-file", "-c", help="config file in json format"
+    ),
+    print_defaults: bool = False,
+):
+    """Train UNet with configuration provided as a json file
+
+    Example invocation:
+        --config-file my_config.json
+
+    To generate a default config:
+        --config-file my_config.json --print-defaults
+    """
+    if print_defaults:
+        sig = inspect.signature(monai_unet.train)
+
+        default_args = {
+            k: v.default
+            if v.default is not inspect.Parameter.empty
+            else f"<required option: {v.annotation.__name__}>"
+            for k, v in sig.parameters.items()
+        }
+        with open(config_file, "w") as f:
+            json.dump(default_args, f, indent=4)
+        return
+
+    with open(config_file, "r") as f:
+        args = json.load(f)
+        monai_unet.train(**args)
+
+
+@app.command()
 def train(
     image_dir: Path = typer.Option(
         ..., "--image-dir", "-i", help="directory containing images"
@@ -28,9 +60,9 @@ def train(
     tissue_list: Path = typer.Option(
         ..., "--tissue-list", "-t", help="label descriptors in iSEG format"
     ),
-    results_dir: Path = typer.Option(
+    output_dir: Path = typer.Option(
         Path("results"),
-        "--results-dir",
+        "--output-dir",
         "-r",
         help="output directory where model checkpoints and logs are saved",
     ),
@@ -41,30 +73,16 @@ def train(
     """Train UNet
 
     Example invocation:
-
-        -i ./dataset/images -l ./dataset/labels --results_dir ./results --tissue_list ./dataset/labels.txt
+        -i ./dataset/images -l ./dataset/labels --output-dir ./results --tissue_list ./dataset/labels.txt
     """
-
-    print_config()
-
-    tissue_dict = load_tissue_list(tissue_list)
-    num_classes = max(tissue_dict.values()) + 1
-    if not len(tissue_dict) == num_classes:
-        raise ValueError("Expecting contiguous labels in range [0,N-1]")
-
-    os.makedirs(results_dir, exist_ok=True)
-    log_dir = Path(results_dir) / "logs"
-    model_file = Path(results_dir) / f"drcmr_{num_classes:d}.ckpt"
 
     monai_unet.train(
         image_dir=image_dir,
         labels_dir=labels_dir,
-        log_dir=log_dir,
-        num_classes=num_classes,
+        tissue_list=tissue_list,
         num_channels=num_channels,
-        model_file_name=model_file,
         max_epochs=max_epochs,
-        output_dir=results_dir,
+        output_dir=output_dir,
         save_nifti=True,
         gpu_ids=gpu_ids,
     )
@@ -79,9 +97,11 @@ def predict(
         None,
         "--labels-dir",
         "-l",
-        help="directory containing labelfields for performance evaluation",
+        help="directory containing labelfields",
     ),
-    model_file: Path = typer.Option(..., "--model-file", "-m", help="saved checkpoint"),
+    model_file: Path = typer.Option(
+        ..., "--model-file", "-m", help="saved model checkpoint"
+    ),
     tissue_list: Path = typer.Option(
         ..., "--tissue-list", "-t", help="label descriptors in iSEG format"
     ),
