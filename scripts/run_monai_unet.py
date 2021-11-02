@@ -23,7 +23,7 @@ def train_config(
     ),
     print_defaults: bool = False,
 ):
-    """Train UNet with configuration provided as a json file
+    """Train UNet with configuration provided as json file
 
     Example invocation:
 
@@ -33,22 +33,25 @@ def train_config(
 
         --config-file my_config.json --print-defaults
     """
-    if print_defaults:
-        sig = inspect.signature(monai_unet.train)
+    sig = inspect.signature(monai_unet.train)
 
+    if print_defaults:
         default_args = {
             k: v.default
             if v.default is not inspect.Parameter.empty
             else f"<required option: {v.annotation.__name__}>"
             for k, v in sig.parameters.items()
         }
-        with open(config_file, "w") as f:
-            json.dump(default_args, f, indent=4)
+        config_file.write_text(json.dumps(default_args, indent=4))
         return
 
-    with open(config_file, "r") as f:
-        args = json.load(f)
-        monai_unet.train(**args)
+    cast_path = (
+        lambda v, k: Path(v) if isinstance(sig.parameters[k].annotation, Path) else v
+    )
+
+    args: dict = json.loads(config_file.read_text())
+    args = {k: cast_path(v, k) for k, v in args.items()}
+    monai_unet.train(**args)
 
 
 @app.command()
