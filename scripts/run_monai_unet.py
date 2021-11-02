@@ -26,9 +26,11 @@ def train_config(
     """Train UNet with configuration provided as a json file
 
     Example invocation:
+
         --config-file my_config.json
 
     To generate a default config:
+
         --config-file my_config.json --print-defaults
     """
     if print_defaults:
@@ -73,6 +75,7 @@ def train(
     """Train UNet
 
     Example invocation:
+
         -i ./dataset/images -l ./dataset/labels --output-dir ./results --tissue_list ./dataset/labels.txt
     """
 
@@ -114,7 +117,7 @@ def predict(
 
     Example invocation:
 
-        -i ./dataset/images --results_dir ./results --tissue_list ./dataset/labels.txt
+        -i ./dataset/images -m model.ckpt --results-dir ./results --tissue-list ./dataset/labels.txt
     """
 
     monai_unet.predict(
