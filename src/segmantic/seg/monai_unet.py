@@ -24,6 +24,7 @@ from monai.losses import DiceLoss
 from monai.inferers import sliding_window_inference
 from monai.data import CacheDataset, list_data_collate, decollate_batch, NiftiSaver
 from monai.networks.utils import one_hot
+from monai.config import print_config
 import numpy as np
 import torch
 import torch.utils.data
@@ -36,6 +37,7 @@ import json
 from typing import List, Optional, Dict, Sequence
 from pathlib import Path
 
+from ..prepro.labels import load_tissue_list
 from .evaluation import confusion_matrix
 from .utils import make_device
 from .dataset import DataSet
@@ -244,17 +246,25 @@ class Net(pytorch_lightning.LightningModule):
 def train(
     image_dir: Path,
     labels_dir: Path,
-    log_dir: Path,
-    num_classes: int,
-    num_channels: int,
-    model_file_name: Path,
+    tissue_list: Path,
     output_dir: Path,
+    num_channels: int = 1,
     spatial_dims: int = 3,
     spatial_size: Sequence[int] = None,
     max_epochs: int = 600,
     save_nifti: bool = True,
     gpu_ids: list = [],
 ):
+    print_config()
+
+    os.makedirs(output_dir, exist_ok=True)
+    log_dir = Path(output_dir) / "logs"
+
+    tissue_dict = load_tissue_list(tissue_list)
+    num_classes = max(tissue_dict.values()) + 1
+    if not len(tissue_dict) == num_classes:
+        raise ValueError("Expecting contiguous labels in range [0,N-1]")
+
     """Run the training"""
     # initialise the LightningModule
     net = Net(
@@ -294,12 +304,6 @@ def train(
         f"train completed, best_metric: {net.best_val_dice:.4f} "
         f"at epoch {net.best_val_epoch}"
     )
-
-    settings = {"num_classes": num_classes, "num_channels": num_channels}
-    with model_file_name.with_suffix(".json").open("w") as json_file:
-        json.dump(settings, json_file)
-
-    trainer.save_checkpoint(model_file_name)
 
     """## View training in tensorboard"""
 
