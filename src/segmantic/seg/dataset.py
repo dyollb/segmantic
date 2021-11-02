@@ -11,8 +11,8 @@ class DataSet(object):
     ):
         super().__init__()
 
-        image_files = sorted(image_dir.glob("*.nii.gz"))
-        label_files = sorted(labels_dir.glob("*.nii.gz"))
+        image_files = sorted(Path(image_dir).glob("*.nii.gz"))
+        label_files = sorted(Path(labels_dir).glob("*.nii.gz"))
         data_dicts = [
             {"image": image_name, "label": label_name}
             for image_name, label_name in zip(image_files, label_files)

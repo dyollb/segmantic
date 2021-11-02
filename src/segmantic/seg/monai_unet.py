@@ -104,12 +104,14 @@ class Net(pytorch_lightning.LightningModule):
         # loading and normalization
         xforms = [
             LoadImaged(keys=keys, reader="itkreader"),
-            AddChanneld(keys="label"),
             EnsureChannelFirstd(keys="image"),
             Orientationd(keys=keys, axcodes="RAS"),
             NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
             CropForegroundd(keys=keys, source_key="image"),
         ]
+
+        if "label" in keys:
+            xforms.insert(1, AddChanneld(keys="label"))
 
         # resample
         if spacing:
@@ -253,17 +255,20 @@ def train(
     spatial_size: Sequence[int] = None,
     max_epochs: int = 600,
     save_nifti: bool = True,
-    gpu_ids: list = [],
+    gpu_ids: List[int] = [0],
 ):
     print_config()
 
-    os.makedirs(output_dir, exist_ok=True)
-    log_dir = Path(output_dir) / "logs"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+    log_dir = output_dir / "logs"
 
     tissue_dict = load_tissue_list(tissue_list)
     num_classes = max(tissue_dict.values()) + 1
     if not len(tissue_dict) == num_classes:
         raise ValueError("Expecting contiguous labels in range [0,N-1]")
+
+    device = make_device(gpu_ids)
 
     """Run the training"""
     # initialise the LightningModule
@@ -317,7 +322,6 @@ def train(
         saver = NiftiSaver(output_dir=output_dir, separate_folder=False, resample=False)
 
     net.eval()
-    device = make_device(gpu_ids)
     net.to(device)
     with torch.no_grad():
         for i, val_data in enumerate(net.val_dataloader()):
