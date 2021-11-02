@@ -41,7 +41,7 @@ from ..prepro.labels import load_tissue_list
 from .evaluation import confusion_matrix
 from .utils import make_device
 from .dataset import DataSet
-from .visualization import make_random_cmap, plot_confusion_matrix
+from .visualization import make_tissue_cmap, plot_confusion_matrix
 
 
 class Net(pytorch_lightning.LightningModule):
@@ -324,14 +324,14 @@ def train(
     net.eval()
     net.to(device)
     with torch.no_grad():
+        cmap = make_tissue_cmap(tissue_list)
+
         for i, val_data in enumerate(net.val_dataloader()):
             roi_size = (160, 160, 160)
             sw_batch_size = 4
             val_outputs = sliding_window_inference(
                 val_data["image"].to(device), roi_size, sw_batch_size, net
             )
-
-            cmap = make_random_cmap(num_classes + 1)
 
             plt.figure("check", (18, 6))
             for row, slice in enumerate([80, 180]):

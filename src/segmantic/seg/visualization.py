@@ -5,11 +5,21 @@ from matplotlib import colors
 import matplotlib.pyplot as plt
 from pathlib import Path
 import itertools
-from typing import List, Optional
+from typing import Dict, List, Optional
+from ..prepro.labels import load_tissue_colors
 
 
-# TODO: create color map from tissue list
-# from ..prepro.labels import RGBTuple, load_tissue_colors
+def make_tissue_cmap(tissue_list_file: Path):
+    """Make a color map for from an iSEG tissue list file"""
+    tissue_color_map = load_tissue_colors(tissue_list_file)
+    num_classes = max(tissue_color_map.keys()) + 1
+    col = np.zeros((num_classes, 3))
+    for idx, c in tissue_color_map.items():
+        r, g, b = c
+        col[idx, 0] = r
+        col[idx, 1] = g
+        col[idx, 2] = b
+    return colors.ListedColormap(col)
 
 
 def make_random_cmap(num_classes: int):
