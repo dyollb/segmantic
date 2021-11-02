@@ -104,7 +104,7 @@ def load_tissue_list(file_name: Path) -> Dict[str, int]:
     return tissue_label_map
 
 
-def load_tissue_colors(file_name: Path) -> Dict[str, RGBTuple]:
+def load_tissue_colors(file_name: Path) -> Dict[int, RGBTuple]:
     """Load tissue colors from iSEG format tissue list
 
     Example file:
@@ -114,13 +114,12 @@ def load_tissue_colors(file_name: Path) -> Dict[str, RGBTuple]:
         C0.00 1.00 0.00 0.50 Fat
         C1.00 0.00 0.00 0.50 Skin
     """
-    tissue_color_map = {"Background": (0.0, 0.0, 0.0)}
+    tissue_idx = 0
+    tissue_color_map = {tissue_idx: (0.0, 0.0, 0.0)}
     with open(file_name) as f:
         for line in f.readlines():
             if line.startswith("C"):
                 rgba = [float(v.strip()) for v in line.lstrip("C").split(" ")[:-1]]
-                tissue = line.rsplit(" ", 1)[-1].rstrip()
-                if tissue in tissue_color_map:
-                    raise KeyError(f"duplicate label '{tissue}' found in '{file_name}'")
-                tissue_color_map[tissue] = (rgba[0], rgba[1], rgba[2])
+                tissue_idx += 1
+                tissue_color_map[tissue_idx] = (rgba[0], rgba[1], rgba[2])
     return tissue_color_map

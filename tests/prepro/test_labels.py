@@ -23,7 +23,7 @@ def test_tissue_list_io(tmp_path: Path, tissue_map: dict):
 
     tissue_colors = labels.load_tissue_colors(file_path)
 
-    assert sorted(tissue_colors.keys()) == sorted(tissue_dict2.keys())
+    assert len(tissue_colors) == len(tissue_dict2)
 
 
 def test_build_tissue_map(tissue_map: dict):
