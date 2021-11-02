@@ -11,11 +11,9 @@ from monai.transforms import (
     Orientationd,
     RandCropByLabelClassesd,
     RandFlipd,
-    RandAffined,
     NormalizeIntensityd,
     EnsureTyped,
     EnsureType,
-    Activationsd,
     SaveImaged,
     Invertd,
 )
@@ -25,8 +23,9 @@ from monai.metrics import DiceMetric, ConfusionMatrixMetric
 from monai.losses import DiceLoss
 from monai.inferers import sliding_window_inference
 from monai.data import CacheDataset, list_data_collate, decollate_batch, NiftiSaver
-from monai.config import print_config
 from monai.networks.utils import one_hot
+from monai.config import print_config
+import numpy as np
 import torch
 import torch.utils.data
 import pytorch_lightning
@@ -38,54 +37,11 @@ import json
 from typing import List, Optional, Dict, Sequence
 from pathlib import Path
 
+from ..prepro.labels import load_tissue_list
 from .evaluation import confusion_matrix
 from .utils import make_device
 from .dataset import DataSet
 from .visualization import make_random_cmap, plot_confusion_matrix
-
-
-def create_transforms(
-    keys: List[str],
-    train: bool = False,
-    num_classes: int = 0,
-    spacing: Sequence[float] = None,
-):
-    # loading and normalization
-    xforms = [
-        LoadImaged(keys=keys, reader="itkreader"),
-        EnsureChannelFirstd(keys="image"),
-        Orientationd(keys=keys, axcodes="RAS"),
-        NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
-        CropForegroundd(keys=keys, source_key="image"),
-    ]
-    if "label" in keys:
-        xforms.insert(1, AddChanneld(keys="label"))
-
-    # resample
-    if spacing:
-        xforms.append(Spacingd(keys=keys, pixdim=spacing))
-
-    # add augmentation
-    if train:
-        xforms.extend(
-            [
-                RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=0),
-                RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=1),
-                RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=2),
-            ]
-        )
-        if num_classes > 0:
-            xforms.append(
-                RandCropByLabelClassesd(
-                    keys=["image", "label"],
-                    label_key="label",
-                    image_key="image",
-                    spatial_size=(96, 96, 96),
-                    num_classes=num_classes,
-                    num_samples=4,
-                )
-            )
-    return Compose(xforms + [EnsureTyped(keys=keys)])
 
 
 class Net(pytorch_lightning.LightningModule):
@@ -93,11 +49,13 @@ class Net(pytorch_lightning.LightningModule):
         self,
         num_classes: int,
         num_channels: int = 1,
+        spatial_dims: int = 3,
+        spatial_size: Sequence[int] = None,
         dataset: Optional[DataSet] = None,
     ):
         super().__init__()
         self._model = UNet(
-            spatial_dims=3,
+            spatial_dims=spatial_dims,
             in_channels=num_channels,
             out_channels=num_classes,
             channels=(16, 32, 64, 128, 256),
@@ -105,8 +63,8 @@ class Net(pytorch_lightning.LightningModule):
             num_res_units=2,
             norm=Norm.BATCH,
         )
-        self.num_classes = num_classes
         self.dataset = dataset
+        self.spatial_size = spatial_size
         self.loss_function = DiceLoss(to_onehot_y=True, softmax=True)
         self.post_pred = Compose(
             [
@@ -122,10 +80,70 @@ class Net(pytorch_lightning.LightningModule):
         )
         self.best_val_dice = 0
         self.best_val_epoch = 0
-        self.save_hyperparameters("num_classes", "num_channels")
+        self.save_hyperparameters(
+            "num_classes", "num_channels", "spatial_dims", "spatial_size"
+        )
+
+    @property
+    def num_classes(self):
+        return self._model.out_channels
+
+    @property
+    def spatial_dims(self):
+        return self._model.dimensions
 
     def set_dataset(self, dataset: DataSet):
         self.dataset = dataset
+
+    def create_transforms(
+        self,
+        keys: List[str],
+        train: bool = False,
+        spacing: Sequence[float] = None,
+    ):
+        # loading and normalization
+        xforms = [
+            LoadImaged(keys=keys, reader="itkreader"),
+            EnsureChannelFirstd(keys="image"),
+            Orientationd(keys=keys, axcodes="RAS"),
+            NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
+            CropForegroundd(keys=keys, source_key="image"),
+        ]
+
+        if "label" in keys:
+            xforms.insert(1, AddChanneld(keys="label"))
+
+        # resample
+        if spacing:
+            xforms.append(Spacingd(keys=keys, pixdim=spacing))
+
+        # add augmentation
+        if train:
+            xforms.extend(
+                [
+                    RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=0),
+                    RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=1),
+                ]
+            )
+            if self.spatial_dims > 2:
+                xforms.append(
+                    RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=2)
+                )
+
+            if self.spatial_size is None:
+                spatial_size = tuple(96 for _ in range(self.spatial_dims))
+            xforms.append(
+                RandCropByLabelClassesd(
+                    keys=["image", "label"],
+                    label_key="label",
+                    image_key="image",
+                    spatial_size=spatial_size,
+                    num_classes=self.num_classes,
+                    num_samples=4,
+                    image_threshold=-np.inf,
+                )
+            )
+        return Compose(xforms + [EnsureTyped(keys=keys)])
 
     def forward(self, x):
         return self._model(x)
@@ -138,10 +156,14 @@ class Net(pytorch_lightning.LightningModule):
         set_determinism(seed=0)
 
         # define the data transforms
-        train_transforms = create_transforms(
-            keys=["image", "label"], num_classes=self.num_classes, train=True
+        train_transforms = self.create_transforms(
+            keys=["image", "label"],
+            train=True,
         )
-        val_transforms = create_transforms(keys=["image", "label"], train=False)
+        val_transforms = self.create_transforms(
+            keys=["image", "label"],
+            train=False,
+        )
 
         # we use cached datasets - these are 10x faster than regular datasets
         self.train_ds = CacheDataset(
@@ -186,7 +208,7 @@ class Net(pytorch_lightning.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         images, labels = batch["image"], batch["label"]
-        roi_size = (160, 160, 160)
+        roi_size = tuple(160 for _ in range(self.spatial_dims))
         sw_batch_size = 4
         outputs = sliding_window_inference(
             images, roi_size, sw_batch_size, self.forward
@@ -226,20 +248,35 @@ class Net(pytorch_lightning.LightningModule):
 def train(
     image_dir: Path,
     labels_dir: Path,
-    log_dir: Path,
-    num_classes: int,
-    num_channels: int,
-    model_file_name: Path,
+    tissue_list: Path,
     output_dir: Path,
+    num_channels: int = 1,
+    spatial_dims: int = 3,
+    spatial_size: Sequence[int] = None,
     max_epochs: int = 600,
     save_nifti: bool = True,
-    gpu_ids: list = [],
+    gpu_ids: List[int] = [0],
 ):
+    print_config()
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+    log_dir = output_dir / "logs"
+
+    tissue_dict = load_tissue_list(tissue_list)
+    num_classes = max(tissue_dict.values()) + 1
+    if not len(tissue_dict) == num_classes:
+        raise ValueError("Expecting contiguous labels in range [0,N-1]")
+
+    device = make_device(gpu_ids)
+
     """Run the training"""
     # initialise the LightningModule
     net = Net(
         num_classes=num_classes,
         num_channels=num_channels,
+        spatial_dims=spatial_dims,
+        spatial_size=spatial_size,
         dataset=DataSet(image_dir=image_dir, labels_dir=labels_dir),
     )
 
@@ -273,12 +310,6 @@ def train(
         f"at epoch {net.best_val_epoch}"
     )
 
-    settings = {"num_classes": num_classes, "num_channels": num_channels}
-    with model_file_name.with_suffix(".json").open("w") as json_file:
-        json.dump(settings, json_file)
-
-    trainer.save_checkpoint(model_file_name)
-
     """## View training in tensorboard"""
 
     # Commented out IPython magic to ensure Python compatibility.
@@ -291,7 +322,6 @@ def train(
         saver = NiftiSaver(output_dir=output_dir, separate_folder=False, resample=False)
 
     net.eval()
-    device = make_device(gpu_ids)
     net.to(device)
     with torch.no_grad():
         for i, val_data in enumerate(net.val_dataloader()):
@@ -335,17 +365,13 @@ def predict(
     gpu_ids: list = [],
 ):
     # load trained model
-    with model_file.with_suffix(".json").open() as json_file:
-        settings = json.load(json_file)
-        num_classes = settings["num_classes"]
-        if "num_channels" in settings:
-            num_channels = settings["num_channels"]
-        else:
-            num_channels = 1
-
-    net = Net.load_from_checkpoint(
-        f"{model_file}", num_classes=num_classes, num_channels=num_channels
-    )
+    if model_file.exists():
+        with model_file.with_suffix(".json").open() as json_file:
+            settings = json.load(json_file)
+        net = Net.load_from_checkpoint(f"{model_file}", **settings)
+    else:
+        net = Net.load_from_checkpoint(f"{model_file}")
+    num_classes = net.num_classes
 
     net.eval()
     device = make_device(gpu_ids)
@@ -359,7 +385,7 @@ def predict(
     else:
         test_files = [{"image": i} for i in test_images]
 
-    pre_transforms = create_transforms(
+    pre_transforms = net.create_transforms(
         keys=["image", "label"] if test_labels else ["image"],
         train=False,
         spacing=(0.85, 0.85, 0.85),
