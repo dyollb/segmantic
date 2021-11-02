@@ -4,7 +4,6 @@ import itk
 import typer
 import json
 from pathlib import Path
-from typing import Union
 
 import segmantic
 from segmantic.prepro.labels import (
