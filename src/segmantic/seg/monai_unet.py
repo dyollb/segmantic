@@ -46,6 +46,7 @@ import os
 import json
 from typing import List, Optional, Dict, Sequence
 from pathlib import Path
+import numpy as np
 
 from .evaluation import confusion_matrix
 from .utils import make_device
@@ -116,6 +117,7 @@ def create_transforms(
                     spatial_size=(96, 96, 96),
                     num_classes=num_classes,
                     num_samples=4,
+                    image_threshold = -np.inf
                 )
             )
     return Compose(xforms + [EnsureTyped(keys=keys)])
