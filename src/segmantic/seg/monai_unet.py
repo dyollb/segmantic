@@ -84,6 +84,8 @@ class Net(pytorch_lightning.LightningModule):
             "num_classes", "num_channels", "spatial_dims", "spatial_size"
         )
 
+    cache_rate: float = 1.0
+
     @property
     def num_classes(self):
         return self._model.out_channels
@@ -169,13 +171,13 @@ class Net(pytorch_lightning.LightningModule):
         self.train_ds = CacheDataset(
             data=self.dataset.training_files(),
             transform=train_transforms,
-            cache_rate=1.0,
+            cache_rate=self.cache_rate,
             num_workers=0,
         )
         self.val_ds = CacheDataset(
             data=self.dataset.validation_files(),
             transform=val_transforms,
-            cache_rate=1.0,
+            cache_rate=self.cache_rate,
             num_workers=0,
         )
 
@@ -254,6 +256,7 @@ def train(
     spatial_dims: int = 3,
     spatial_size: Sequence[int] = None,
     max_epochs: int = 600,
+    cache_rate: float = 1.0,
     save_nifti: bool = True,
     gpu_ids: List[int] = [0],
 ):
@@ -279,6 +282,7 @@ def train(
         spatial_size=spatial_size,
         dataset=DataSet(image_dir=image_dir, labels_dir=labels_dir),
     )
+    net.cache_rate = cache_rate
 
     # set up loggers and checkpoints
     tb_logger = pytorch_lightning.loggers.TensorBoardLogger(save_dir=f"{log_dir}")
