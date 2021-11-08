@@ -369,8 +369,10 @@ def predict(
     gpu_ids: list = [],
 ):
     # load trained model
-    if model_file.exists():
-        with model_file.with_suffix(".json").open() as json_file:
+    model_settings_json = model_file.with_suffix(".json")
+    if model_settings_json.exists():
+        print(f"Loading legacy model settings from {model_settings_json}")
+        with model_settings_json.open() as json_file:
             settings = json.load(json_file)
         net = Net.load_from_checkpoint(f"{model_file}", **settings)
     else:
