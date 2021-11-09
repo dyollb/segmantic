@@ -60,6 +60,7 @@ def create_transforms(
     num_classes: int = 0,
     spacing: Sequence[float] = None,
 ):
+    print('testing')
     # loading and normalization
     xforms = [
         LoadImaged(keys=keys, reader="itkreader"),
@@ -95,19 +96,17 @@ def create_transforms(
             ]
         )
         # Spatial augmentation
-        """
         xforms.extend(
             [
-                RandRotated(keys=["image", "label"], prob=0.2, range_x=0.4, mode=['bilinear', 'nearest']),
-                RandRotated(keys=["image", "label"], prob=0.2, range_y=0.4, mode=['bilinear', 'nearest']),
-                RandRotated(keys=["image", "label"], prob=0.2, range_z=0.4, mode=['bilinear', 'nearest']),
-                RandZoomd(keys=["image", "label"], prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=['area', 'nearest']),
+                RandRotated(keys=["image", "label"], prob=0.2, range_x=0.4, mode=['bilinear', 'nearest'], keep_size=False),
+                RandRotated(keys=["image", "label"], prob=0.2, range_y=0.4, mode=['bilinear', 'nearest'], keep_size=False),
+                RandRotated(keys=["image", "label"], prob=0.2, range_z=0.4, mode=['bilinear', 'nearest'], keep_size=False),
+                #RandZoomd(keys=["image", "label"], prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=['area', 'nearest']),
                 #Rand3DElasticd(keys=["image", "label"], prob=0.2, sigma_range=(5, 7), magnitude_range=(50, 150), mode=['bilinear', 'nearest']),
 
             ]
-            print('spatial augmentation added')
         )
-        """
+
         if num_classes > 0:
             xforms.append(
                 RandCropByLabelClassesd(
@@ -182,13 +181,13 @@ class Net(pytorch_lightning.LightningModule):
         self.train_ds = CacheDataset(
             data=self.dataset.training_files(),
             transform=train_transforms,
-            cache_rate=1.0,
+            cache_rate=0.4,
             num_workers=0,
         )
         self.val_ds = CacheDataset(
             data=self.dataset.validation_files(),
             transform=val_transforms,
-            cache_rate=1.0,
+            cache_rate=0.4,
             num_workers=0,
         )
 
@@ -294,6 +293,7 @@ def train(
     #  - max_time={"days": 1, "hours": 5}
     trainer = pytorch_lightning.Trainer(
         gpus=gpu_ids,
+        precision=16, # mixed precision training
         max_epochs=max_epochs,
         logger=tb_logger,
         callbacks=[checkpoint_callback],
