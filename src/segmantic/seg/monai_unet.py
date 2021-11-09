@@ -304,7 +304,7 @@ def train(
 
     """Run the training"""
     # initialise the LightningModule
-    if model_file and model_file.exists():
+    if model_file and Path(model_file).exists():
         net = Net.load_from_checkpoint(f"{model_file}")
     else:
         net = Net(
@@ -332,6 +332,7 @@ def train(
     #  - max_time={"days": 1, "hours": 5}
     trainer = pytorch_lightning.Trainer(
         gpus=gpu_ids,
+        precision=16, # mixed precision training
         max_epochs=max_epochs,
         logger=tb_logger,
         callbacks=[checkpoint_callback],
