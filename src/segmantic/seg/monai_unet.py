@@ -9,8 +9,14 @@ from monai.transforms import (
     CropForegroundd,
     LoadImaged,
     Orientationd,
+    RandAdjustContrastd,
+    RandHistogramShiftd,
+    RandGibbsNoised,
+    RandKSpaceSpikeNoised,
     RandCropByLabelClassesd,
     RandFlipd,
+    RandRotated,
+    RandZoomd,
     NormalizeIntensityd,
     EnsureTyped,
     EnsureType,
@@ -84,7 +90,10 @@ class Net(pytorch_lightning.LightningModule):
             "num_classes", "num_channels", "spatial_dims", "spatial_size"
         )
 
+    dataset: Optional[DataSet]
     cache_rate: float = 1.0
+    intensity_augmentation: bool = False
+    spatial_augmentation: bool = False
 
     @property
     def num_classes(self):
@@ -93,9 +102,6 @@ class Net(pytorch_lightning.LightningModule):
     @property
     def spatial_dims(self):
         return self._model.dimensions
-
-    def set_dataset(self, dataset: DataSet):
-        self.dataset = dataset
 
     def create_transforms(
         self,
@@ -123,20 +129,46 @@ class Net(pytorch_lightning.LightningModule):
         if train:
             xforms.extend(
                 [
-                    RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=0),
-                    RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=1),
+                    RandFlipd(keys=keys, prob=0.2, spatial_axis=a)
+                    for a in range(self.spatial_dims)
                 ]
             )
-            if self.spatial_dims > 2:
+
+            if self.intensity_augmentation:
+                xforms.extend(
+                    [
+                        RandAdjustContrastd(keys="image", prob=0.2, gamma=(0.5, 4.5)),
+                        RandHistogramShiftd(
+                            keys="image", prob=0.2, num_control_points=10
+                        ),
+                        RandGibbsNoised(keys="image", prob=0.2, alpha=(0.0, 1.0)),
+                        RandKSpaceSpikeNoised(keys="image", global_prob=0.1, prob=0.2),
+                    ]
+                )
+
+            if self.spatial_augmentation:
+                mode = ["nearest" if k == "label" else "bilinear" for k in keys]
+                xforms.append(RandRotated(keys=keys, prob=0.2, range_z=0.4, mode=mode))
+                if self.spatial_dims > 2:
+                    xforms.append(
+                        RandRotated(keys=keys, prob=0.2, range_x=0.4, mode=mode)
+                    )
+                    xforms.append(
+                        RandRotated(keys=keys, prob=0.2, range_y=0.4, mode=mode)
+                    )
+
+                mode = ["nearest" if k == "label" else "area" for k in keys]
                 xforms.append(
-                    RandFlipd(keys=["image", "label"], prob=0.2, spatial_axis=2)
+                    RandZoomd(
+                        keys=keys, prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=mode
+                    )
                 )
 
             if self.spatial_size is None:
                 spatial_size = tuple(96 for _ in range(self.spatial_dims))
             xforms.append(
                 RandCropByLabelClassesd(
-                    keys=["image", "label"],
+                    keys=keys,
                     label_key="label",
                     image_key="image",
                     spatial_size=spatial_size,
@@ -252,10 +284,14 @@ def train(
     labels_dir: Path,
     tissue_list: Path,
     output_dir: Path,
+    checkpoint_file: Path = Path(""),
     num_channels: int = 1,
     spatial_dims: int = 3,
     spatial_size: Sequence[int] = None,
     max_epochs: int = 600,
+    augment_intensity: bool = False,
+    augment_spatial: bool = False,
+    mixed_precision: bool = True,
     cache_rate: float = 1.0,
     save_nifti: bool = True,
     gpu_ids: List[int] = [0],
@@ -275,13 +311,18 @@ def train(
 
     """Run the training"""
     # initialise the LightningModule
-    net = Net(
-        num_classes=num_classes,
-        num_channels=num_channels,
-        spatial_dims=spatial_dims,
-        spatial_size=spatial_size,
-        dataset=DataSet(image_dir=image_dir, labels_dir=labels_dir),
-    )
+    if str(checkpoint_file) and checkpoint_file.exists():
+        net = Net.load_from_checkpoint(f"{checkpoint_file}")
+    else:
+        net = Net(
+            num_classes=num_classes,
+            num_channels=num_channels,
+            spatial_dims=spatial_dims,
+            spatial_size=spatial_size,
+        )
+    net.dataset = DataSet(image_dir=image_dir, labels_dir=labels_dir)
+    net.intensity_augmentation = augment_intensity
+    net.spatial_augmentation = augment_spatial
     net.cache_rate = cache_rate
 
     # set up loggers and checkpoints
@@ -296,10 +337,10 @@ def train(
 
     # initialise Lightning's trainer.
     # other options:
-    #  - precision=16 (todo: evaluate speed-up)
     #  - max_time={"days": 1, "hours": 5}
     trainer = pytorch_lightning.Trainer(
         gpus=gpu_ids,
+        precision=16 if mixed_precision else 32,
         max_epochs=max_epochs,
         logger=tb_logger,
         callbacks=[checkpoint_callback],
