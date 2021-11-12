@@ -148,16 +148,20 @@ class Net(pytorch_lightning.LightningModule):
 
             if self.spatial_augmentation:
                 mode = ["nearest" if k == "label" else "bilinear" for k in keys]
-                modez = ["nearest" if k == "label" else "area" for k in keys]
-                xforms.extend(
-                    [
-                        RandRotated(keys=keys, prob=0.2, range_x=0.4, mode=mode),
-                        RandRotated(keys=keys, prob=0.2, range_y=0.4, mode=mode),
-                        RandRotated(keys=keys, prob=0.2, range_z=0.4, mode=mode),
-                        RandZoomd(
-                            keys=keys, prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=modez
-                        ),
-                    ]
+                xforms.append(RandRotated(keys=keys, prob=0.2, range_z=0.4, mode=mode))
+                if self.spatial_dims > 2:
+                    xforms.append(
+                        RandRotated(keys=keys, prob=0.2, range_x=0.4, mode=mode)
+                    )
+                    xforms.append(
+                        RandRotated(keys=keys, prob=0.2, range_y=0.4, mode=mode)
+                    )
+
+                mode = ["nearest" if k == "label" else "area" for k in keys]
+                xforms.append(
+                    RandZoomd(
+                        keys=keys, prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=mode
+                    )
                 )
 
             if self.spatial_size is None:
@@ -285,6 +289,9 @@ def train(
     spatial_dims: int = 3,
     spatial_size: Sequence[int] = None,
     max_epochs: int = 600,
+    augment_intensity: bool = False,
+    augment_spatial: bool = False,
+    mixed_precision: bool = True,
     cache_rate: float = 1.0,
     save_nifti: bool = True,
     gpu_ids: List[int] = [0],
@@ -314,6 +321,8 @@ def train(
             spatial_size=spatial_size,
         )
     net.dataset = DataSet(image_dir=image_dir, labels_dir=labels_dir)
+    net.intensity_augmentation = augment_intensity
+    net.spatial_augmentation = augment_spatial
     net.cache_rate = cache_rate
 
     # set up loggers and checkpoints
@@ -328,11 +337,10 @@ def train(
 
     # initialise Lightning's trainer.
     # other options:
-    #  - precision=16 (todo: evaluate speed-up)
     #  - max_time={"days": 1, "hours": 5}
     trainer = pytorch_lightning.Trainer(
         gpus=gpu_ids,
-        precision=16, # mixed precision training
+        precision=16 if mixed_precision else 32,
         max_epochs=max_epochs,
         logger=tb_logger,
         callbacks=[checkpoint_callback],
