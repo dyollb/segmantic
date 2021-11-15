@@ -1,19 +1,20 @@
 import numpy as np
 import colorsys
 from pathlib import Path
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Tuple, Union
 
 RGBTuple = Tuple[float, float, float]
+TissueLabelDict = Dict[str, int]
 
 
 def build_tissue_mapping(
-    input_label_map: Dict[str, int], mapper: Callable[[str], str]
-) -> Tuple[Dict[str, int], np.ndarray]:
+    input_label_map: TissueLabelDict, mapper: Callable[[str], str]
+) -> Tuple[TissueLabelDict, np.ndarray]:
     """Build mapping to map label fields
 
     Args:
         input_label_map: Dict of tissue names and labels, e.g. loaded with 'load_tissue_list'
-        mapper: Gunction that maps a tissue name to a new name
+        mapper: Function that maps a tissue name to a new name
 
     Returns:
         1. tissue label dict after mapping
@@ -34,7 +35,7 @@ def build_tissue_mapping(
 
 
 def save_tissue_list(
-    tissue_label_map: Dict[str, int],
+    tissue_label_map: TissueLabelDict,
     tissue_list_file_name: Path,
     tissue_color_map: Callable[[str], RGBTuple] = None,
 ) -> None:
@@ -81,7 +82,9 @@ def save_tissue_list(
             )
 
 
-def load_tissue_list(file_name: Path, load_colors: bool = False) -> Dict[str, int]:
+def load_tissue_list(
+    file_name: Path, load_colors: bool = False
+) -> Union[TissueLabelDict, Tuple[TissueLabelDict, Dict[int, RGBTuple]]]:
     """Load tissue list in iSEG format
 
     Example file:

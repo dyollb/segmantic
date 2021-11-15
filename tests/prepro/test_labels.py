@@ -36,8 +36,8 @@ def test_build_tissue_map(tissue_map: dict):
             return "Bone"
         return "Other_tissue"
 
-    omap, i2o = labels.build_tissue_mapping(tissue_map, _map_name)
+    new_map, i2o = labels.build_tissue_mapping(tissue_map, _map_name)
 
-    assert len(omap) == 3
+    assert len(new_map) == 3
 
-    assert omap == {_map_name(n1): i2o[i1] for n1, i1 in tissue_map.items()}
+    assert new_map == {_map_name(n1): i2o[i1] for n1, i1 in tissue_map.items()}

@@ -37,7 +37,7 @@ import json
 from typing import List, Optional, Dict, Sequence
 from pathlib import Path
 
-from ..prepro.labels import load_tissue_list
+from ..prepro.labels import TissueLabelDict, load_tissue_list
 from .evaluation import confusion_matrix
 from .utils import make_device
 from .dataset import DataSet
@@ -267,6 +267,8 @@ def train(
     log_dir = output_dir / "logs"
 
     tissue_dict = load_tissue_list(tissue_list)
+    if isinstance(tissue_dict, tuple):  # TODO: ugly
+        tissue_dict = tissue_dict[0]
     num_classes = max(tissue_dict.values()) + 1
     if not len(tissue_dict) == num_classes:
         raise ValueError("Expecting contiguous labels in range [0,N-1]")
