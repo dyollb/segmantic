@@ -11,4 +11,4 @@ def test_print_defaults():
     result = runner.invoke(app, ["train-config", "-c", "foo.json", "--print-defaults"])
     assert result.exit_code == 0
     assert Path("foo.json").exists()
-    Path("foo.json").unlink(missing_ok=False)
+    Path("foo.json").unlink()
