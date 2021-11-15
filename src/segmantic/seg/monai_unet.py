@@ -284,7 +284,7 @@ def train(
     labels_dir: Path,
     tissue_list: Path,
     output_dir: Path,
-    checkpoint_file: Path = Path(""),
+    checkpoint_file: Path = None,
     num_channels: int = 1,
     spatial_dims: int = 3,
     spatial_size: Sequence[int] = None,
@@ -311,7 +311,7 @@ def train(
 
     """Run the training"""
     # initialise the LightningModule
-    if str(checkpoint_file) and checkpoint_file.exists():
+    if checkpoint_file and Path(checkpoint_file).exists():
         net = Net.load_from_checkpoint(f"{checkpoint_file}")
     else:
         net = Net(
