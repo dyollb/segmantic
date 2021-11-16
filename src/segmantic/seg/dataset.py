@@ -18,7 +18,7 @@ class DataSet(object):
             for image_name, label_name in zip(image_files, label_files)
         ]
         num_total = len(data_dicts)
-        num_valid = int(valid_split * num_total)
+        num_valid = max(int(valid_split * num_total), 1)
 
         # use first `N` files for validation, rest for training
         self._train_files, self._val_files = (
