@@ -1,3 +1,5 @@
+from typing import Callable
+from torch import Tensor
 import torch.nn as nn
 import functools
 
@@ -12,7 +14,9 @@ class Identity(nn.Module):
         return x
 
 
-def get_norm_layer(spatial_dims: int, norm_type: str = "instance"):
+def get_norm_layer(
+    spatial_dims: int, norm_type: str = "instance"
+) -> Callable[[Tensor], Tensor]:
     """Return a normalization layer
 
     Parameters:

@@ -23,6 +23,7 @@ from monai.transforms import (
     SaveImaged,
     Invertd,
 )
+from monai.transforms.transform import Transform
 from monai.networks.nets import UNet
 from monai.networks.layers import Norm
 from monai.metrics import DiceMetric, ConfusionMatrixMetric
@@ -108,7 +109,7 @@ class Net(pytorch_lightning.LightningModule):
         keys: List[str],
         train: bool = False,
         spacing: Sequence[float] = None,
-    ):
+    ) -> Transform:
         # loading and normalization
         xforms = [
             LoadImaged(keys=keys, reader="itkreader"),
@@ -295,7 +296,8 @@ def train(
     cache_rate: float = 1.0,
     save_nifti: bool = True,
     gpu_ids: List[int] = [0],
-):
+) -> pytorch_lightning.LightningModule:
+
     print_config()
 
     output_dir = Path(output_dir)
@@ -399,6 +401,8 @@ def train(
                 pred_labels = val_outputs.argmax(dim=1, keepdim=True)
                 saver.save_batch(pred_labels, val_data["image_meta_dict"])
 
+    return net
+
 
 def predict(
     model_file: Path,
@@ -408,7 +412,7 @@ def predict(
     tissue_dict: Dict[str, int] = None,
     save_nifti: bool = True,
     gpu_ids: list = [],
-):
+) -> None:
     # load trained model
     model_settings_json = model_file.with_suffix(".json")
     if model_settings_json.exists():

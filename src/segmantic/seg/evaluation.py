@@ -104,7 +104,9 @@ def confusion_matrix(num_classes: int, y_pred: np.ndarray, y: np.ndarray) -> np.
         from numba import njit
 
         @njit
-        def _compute_confusion(num_classes: int, y_pred: np.ndarray, y: np.ndarray):
+        def _compute_confusion(
+            num_classes: int, y_pred: np.ndarray, y: np.ndarray
+        ) -> np.ndarray:
             cm = np.zeros((num_classes, num_classes))
             for i in range(num_classes):
                 cm[y[i], y_pred[i]] += 1

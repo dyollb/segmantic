@@ -22,7 +22,7 @@ def train_config(
         ..., "--config-file", "-c", help="config file in json format"
     ),
     print_defaults: bool = False,
-):
+) -> None:
     """Train UNet with configuration provided as json file
 
     Example invocation:
@@ -74,7 +74,7 @@ def train(
     num_channels: int = 1,
     max_epochs: int = 600,
     gpu_ids: List[int] = [0],
-):
+) -> None:
     """Train UNet
 
     Example invocation:
@@ -115,7 +115,7 @@ def predict(
         Path("results"), "--results-dir", "-r", help="output directory"
     ),
     gpu_ids: List[int] = [0],
-):
+) -> None:
     """Predict segmentations
 
     Example invocation:
