@@ -9,3 +9,4 @@ black:          dev
 pytest:         dev
 mypy:           dev
 pre-commit:     dev
+torchinfo:      dev
