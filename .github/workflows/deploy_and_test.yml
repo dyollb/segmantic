@@ -45,7 +45,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip
       - name: Pip install
-        run: pip install -e segmantic_src
+        run: pip install -e segmantic_src[test]
       - name: Test
         working-directory: segmantic_src
         run: |

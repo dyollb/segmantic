@@ -1,6 +1,9 @@
+from typing import Tuple
 import numpy as np
+import random
 import torch
 from torchinfo import summary
+import torcheck
 
 from segmantic.i2i.networks import (
     Pad,
@@ -115,5 +118,43 @@ def test_PatchGAN():
     print(output.shape)
 
 
+def test_PatchGAN_Optimize():
+    spatial_dims = 3
+    norm_layer = get_norm_layer(spatial_dims, "instance")
+    net = NLayerDiscriminator(
+        spatial_dims=spatial_dims, input_nc=1, ndf=64, n_layers=3, norm_layer=norm_layer
+    )
+
+    def striped_image(shape: Tuple[int, ...], vertical: bool) -> torch.Tensor:
+        t = torch.zeros(size=shape)
+        if vertical:
+            t[:, :, 2 : shape[2] // 2] = 1
+        else:
+            t[:, :, :, 2 : shape[3] // 2] = 1
+        return t
+
+    classes = [-1.0 if random.uniform(0, 1) > 0.5 else 1.0]
+    data = {striped_image((1, 1, 24, 24, 24), c > 0): c for c in classes}
+
+    optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
+
+    torcheck.register(optimizer)
+    torcheck.add_module(
+        net, module_name="PatchGAN3d", changing=True, check_inf=True, check_nan=True
+    )
+
+    for _ in range(10):
+        for batch, c in data.items():
+            y = net(batch)
+            if c > 0.0:
+                loss = y.mean()
+            else:
+                loss = -y.mean()
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+
 if __name__ == "__main__":
-    test_PatchGAN()
+    test_PatchGAN_Optimize()
