@@ -36,7 +36,7 @@ import torch
 import torch.utils.data
 import pytorch_lightning
 import pytorch_lightning.loggers
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 import matplotlib.pyplot as plt
 import os
 import json
@@ -219,9 +219,10 @@ class Net(pytorch_lightning.LightningModule):
         )
 
     def train_dataloader(self):
+        print(len(self.train_ds))
         train_loader = torch.utils.data.DataLoader(
             self.train_ds,
-            batch_size=2,
+            batch_size=8,
             shuffle=True,
             num_workers=0,
             collate_fn=list_data_collate,
@@ -344,15 +345,22 @@ def train(
         save_top_k=3,
     )
 
+    early_stop_callback = EarlyStopping(monitor="val_loss",
+                                        min_delta=0.01,
+                                        patience=3,
+                                        mode='min',
+                                        check_finite=True,
+                                        )
     # initialise Lightning's trainer.
     # other options:
     #  - max_time={"days": 1, "hours": 5}
     trainer = pytorch_lightning.Trainer(
         gpus=gpu_ids,
+        auto_scale_batch_size=True,
         precision=16 if mixed_precision else 32,
         max_epochs=max_epochs,
         logger=tb_logger,
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback, early_stop_callback],
         num_sanity_val_steps=1,
     )
 
@@ -580,6 +588,7 @@ def cross_validate(
 ):
     print_config()
     print('Cross-validating')
+    print(augment_intensity)
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
 
@@ -650,7 +659,7 @@ def cross_validate(
                   spatial_size=spatial_size,
                   layers=test_layers[scenario],
                   strides=test_strides[scenario],
-                  max_epochs=5,
+                  max_epochs=150,
                   augment_intensity=augment_intensity,
                   augment_spatial=augment_spatial,
                   mixed_precision=mixed_precision,
