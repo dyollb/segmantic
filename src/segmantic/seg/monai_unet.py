@@ -31,12 +31,13 @@ from monai.inferers import sliding_window_inference
 from monai.data import CacheDataset, list_data_collate, decollate_batch, NiftiSaver
 from monai.networks.utils import one_hot
 from monai.config import print_config
+from adabelief_pytorch import AdaBelief
 import numpy as np
 import torch
 import torch.utils.data
 import pytorch_lightning
 import pytorch_lightning.loggers
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 import matplotlib.pyplot as plt
 import os
 import json
@@ -55,14 +56,14 @@ from .visualization import make_tissue_cmap, plot_confusion_matrix
 
 class Net(pytorch_lightning.LightningModule):
     def __init__(
-        self,
-        num_classes: int,
-        num_channels: int = 1,
-        spatial_dims: int = 3,
-        spatial_size: Sequence[int] = None,
-        dataset: Optional[DataSet] = None,
-        layers: tuple = (16, 32, 64, 128, 256),
-        strides: tuple = (2, 2, 2, 2),
+            self,
+            num_classes: int,
+            num_channels: int = 1,
+            spatial_dims: int = 3,
+            spatial_size: Sequence[int] = None,
+            dataset: Optional[DataSet] = None,
+            layers: tuple = (16, 32, 64, 128, 256),
+            strides: tuple = (2, 2, 2, 2),
     ):
         super().__init__()
         self._model = UNet(
@@ -74,6 +75,7 @@ class Net(pytorch_lightning.LightningModule):
             num_res_units=2,
             norm=Norm.BATCH,
         )
+        self.automatic_optimization = False
         self.dataset = dataset
         self.spatial_size = spatial_size
         self.loss_function = DiceLoss(to_onehot_y=True, softmax=True)
@@ -109,10 +111,10 @@ class Net(pytorch_lightning.LightningModule):
         return self._model.dimensions
 
     def create_transforms(
-        self,
-        keys: List[str],
-        train: bool = False,
-        spacing: Sequence[float] = None,
+            self,
+            keys: List[str],
+            train: bool = False,
+            spacing: Sequence[float] = None,
     ):
         # loading and normalization
         xforms = [
@@ -236,13 +238,43 @@ class Net(pytorch_lightning.LightningModule):
         return val_loader
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self._model.parameters(), 1e-4)
-        return optimizer
+        # optimizer = torch.optim.Adam(self._model.parameters(), 1e-3)
+        optimizer = AdaBelief(self._model.parameters(),
+                              lr=1e-3,
+                              eps=1e-16,
+                              betas=(0.9, 0.999),
+                              weight_decouple=True,
+                              rectify=False)
+
+        # lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer,
+        #                                                      gamma=0.1)
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
+                                                                  mode='min',
+                                                                  factor=0.5,
+                                                                  patience=5,
+                                                                  verbose=True)
+        return [optimizer], [lr_scheduler]
 
     def training_step(self, batch, batch_idx):
         images, labels = batch["image"], batch["label"]
         output = self.forward(images)
+
+        optimizer = self.optimizers()
+        # scheduler = self.lr_schedulers()
+
+        optimizer.zero_grad()
         loss = self.loss_function(output, labels)
+        self.manual_backward(loss)
+        optimizer.step()
+
+        # if self.trainer.is_last_batch:
+        #    print('updating learning rate')
+        #    scheduler.step()
+
+        # if self.trainer.is_last_batch and (self.trainer.current_epoch + 1) % 10 == 0:
+        #    print('updating learning rate')
+        #    scheduler.step()
+
         tensorboard_logs = {"train_loss": loss.item()}
         return {"loss": loss, "log": tensorboard_logs}
 
@@ -261,12 +293,17 @@ class Net(pytorch_lightning.LightningModule):
 
     def validation_epoch_end(self, outputs):
         val_loss, num_items = 0, 0
+
         for output in outputs:
             val_loss += output["val_loss"].sum().item()
             num_items += output["val_number"]
         mean_val_dice = self.dice_metric.aggregate().item()
         self.dice_metric.reset()
         mean_val_loss = torch.tensor(val_loss / num_items)
+
+        scheduler = self.lr_schedulers()
+        scheduler.step(mean_val_loss)
+
         tensorboard_logs = {
             "val_dice": mean_val_dice,
             "val_loss": mean_val_loss,
@@ -277,6 +314,7 @@ class Net(pytorch_lightning.LightningModule):
         print(
             f"\ncurrent epoch: {self.current_epoch} "
             f"current mean dice: {mean_val_dice:.4f}"
+            f"\ncurrent mean loss: {mean_val_loss:.4f}"
             f"\nbest mean dice: {self.best_val_dice:.4f} "
             f"at epoch: {self.best_val_epoch}"
         )
@@ -286,23 +324,23 @@ class Net(pytorch_lightning.LightningModule):
 
 
 def train(
-    image_dir: Path,
-    labels_dir: Path,
-    tissue_list: Path,
-    output_dir: Path,
-    checkpoint_file: Path = None,
-    num_channels: int = 1,
-    spatial_dims: int = 3,
-    spatial_size: Sequence[int] = None,
-    layers: tuple = (16, 32, 64, 128, 256),
-    strides: tuple = (2, 2, 2, 2),
-    max_epochs: int = 600,
-    augment_intensity: bool = False,
-    augment_spatial: bool = False,
-    mixed_precision: bool = True,
-    cache_rate: float = 1.0,
-    save_nifti: bool = True,
-    gpu_ids: List[int] = [0],
+        image_dir: Path,
+        labels_dir: Path,
+        tissue_list: Path,
+        output_dir: Path,
+        checkpoint_file: Path = None,
+        num_channels: int = 1,
+        spatial_dims: int = 3,
+        spatial_size: Sequence[int] = None,
+        layers: tuple = (16, 32, 64, 128, 256),
+        strides: tuple = (2, 2, 2, 2),
+        max_epochs: int = 600,
+        augment_intensity: bool = False,
+        augment_spatial: bool = False,
+        mixed_precision: bool = True,
+        cache_rate: float = 1.0,
+        save_nifti: bool = True,
+        gpu_ids: List[int] = [0],
 ):
     print_config()
 
@@ -345,12 +383,17 @@ def train(
         save_top_k=3,
     )
 
+    # defining early stopping. When val loss improves less than 0 over 30 epochs, the training will be stopped.
     early_stop_callback = EarlyStopping(monitor="val_loss",
-                                        min_delta=0.01,
-                                        patience=3,
+                                        min_delta=0.00,
+                                        patience=30,
                                         mode='min',
                                         check_finite=True,
                                         )
+
+    lr_monitor = LearningRateMonitor(log_momentum=True,
+                                     logging_interval='epoch')
+
     # initialise Lightning's trainer.
     # other options:
     #  - max_time={"days": 1, "hours": 5}
@@ -360,7 +403,7 @@ def train(
         precision=16 if mixed_precision else 32,
         max_epochs=max_epochs,
         logger=tb_logger,
-        callbacks=[checkpoint_callback, early_stop_callback],
+        callbacks=[checkpoint_callback, early_stop_callback, lr_monitor],
         num_sanity_val_steps=1,
     )
 
@@ -418,15 +461,15 @@ def train(
 
 
 def predict(
-    model_file: Path,
-    output_dir: Path,
-    test_images: List[Path],
-    test_labels: Optional[List[Path]] = None,
-    tissue_dict: Dict[str, int] = None,
-    layers: tuple = (16, 32, 64, 128, 256),
-    strides: tuple = (2, 2, 2, 2),
-    save_nifti: bool = True,
-    gpu_ids: list = [],
+        model_file: Path,
+        output_dir: Path,
+        test_images: List[Path],
+        test_labels: Optional[List[Path]] = None,
+        tissue_dict: Dict[str, int] = None,
+        layers: tuple = (16, 32, 64, 128, 256),
+        strides: tuple = (2, 2, 2, 2),
+        save_nifti: bool = True,
+        gpu_ids: list = [],
 ):
     # load trained model
     model_settings_json = model_file.with_suffix(".json")
@@ -553,7 +596,6 @@ def predict(
                 if filename_or_obj and isinstance(filename_or_obj, list):
                     filename_or_obj = filename_or_obj[0]
                 if filename_or_obj:
-
                     base = Path(filename_or_obj).with_suffix("").name
                     c = confusion_matrix(
                         num_classes=num_classes,
@@ -565,26 +607,26 @@ def predict(
                         tissue_names,
                         file_name=output_dir / (base + "_confusion.png"),
                     )
-        np.savetxt(output_dir.joinpath('mean_dice_'+str(model_file.stem)+'.txt'), all_mean_dice, delimiter=',')
+        np.savetxt(output_dir.joinpath('mean_dice_' + str(model_file.stem) + '.txt'), all_mean_dice, delimiter=',')
 
 
 def cross_validate(
-    image_dir: Path,
-    labels_dir: Path,
-    tissue_list: Path,
-    output_dir: Path,
-    checkpoint_file: Path = None,
-    num_channels: int = 1,
-    spatial_dims: int = 3,
-    spatial_size: Sequence[int] = None,
-    max_epochs: int = 100,
-    augment_intensity: bool = False,
-    augment_spatial: bool = False,
-    mixed_precision: bool = True,
-    cache_rate: float = 1.0,
-    n_splits: int = 7,
-    save_nifti: bool = True,
-    gpu_ids: List[int] = [0],
+        image_dir: Path,
+        labels_dir: Path,
+        tissue_list: Path,
+        output_dir: Path,
+        checkpoint_file: Path = None,
+        num_channels: int = 1,
+        spatial_dims: int = 3,
+        spatial_size: Sequence[int] = None,
+        max_epochs: int = 100,
+        augment_intensity: bool = False,
+        augment_spatial: bool = False,
+        mixed_precision: bool = True,
+        cache_rate: float = 1.0,
+        n_splits: int = 7,
+        save_nifti: bool = True,
+        gpu_ids: List[int] = [0],
 ):
     print_config()
     print('Cross-validating')
@@ -616,8 +658,10 @@ def cross_validate(
         if not path.exists():
             path.mkdir()
 
-    test_layers = [(16, 32, 64, 128), (16, 32, 64, 128, 256), (16, 32, 64, 128, 256, 516)]
-    test_strides = [(2, 2, 2), (2, 2, 2, 2), (2, 2, 2, 2, 2)]
+    # test_layers = [(16, 32, 64, 128), (16, 32, 64, 128, 256), (16, 32, 64, 128, 256, 516)]
+    # test_strides = [(2, 2, 2), (2, 2, 2, 2), (2, 2, 2, 2, 2)]
+    test_layers = [(16, 32, 64, 128, 256), (16, 32, 64, 128, 256, 516)]
+    test_strides = [(2, 2, 2, 2), (2, 2, 2, 2, 2)]
 
     for scenario in range(len(test_layers)):
         output_dir_scenario = output_dir.joinpath(str(test_layers[scenario]))
@@ -659,7 +703,7 @@ def cross_validate(
                   spatial_size=spatial_size,
                   layers=test_layers[scenario],
                   strides=test_strides[scenario],
-                  max_epochs=150,
+                  max_epochs=1000,
                   augment_intensity=augment_intensity,
                   augment_spatial=augment_spatial,
                   mixed_precision=mixed_precision,
@@ -681,4 +725,3 @@ def cross_validate(
                             strides=test_strides[scenario],
                             save_nifti=save_nifti,
                             gpu_ids=gpu_ids)
-
