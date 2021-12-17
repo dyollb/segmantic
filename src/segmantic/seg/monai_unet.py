@@ -101,6 +101,8 @@ class Net(pytorch_lightning.LightningModule):
     cache_rate: float = 1.0
     intensity_augmentation: bool = False
     spatial_augmentation: bool = False
+    optimizer: str = 'Adam'
+    lr_scheduling: str = 'ReduceOnPlateau'
 
     @property
     def num_classes(self):
@@ -238,21 +240,29 @@ class Net(pytorch_lightning.LightningModule):
         return val_loader
 
     def configure_optimizers(self):
-        # optimizer = torch.optim.Adam(self._model.parameters(), 1e-3)
-        optimizer = AdaBelief(self._model.parameters(),
-                              lr=1e-3,
-                              eps=1e-16,
-                              betas=(0.9, 0.999),
-                              weight_decouple=True,
-                              rectify=False)
+        if self.optimizer == 'Adam':
+            optimizer = torch.optim.Adam(self._model.parameters(), 1e-4)
+        elif self.optimizer == 'AdaBelief':
+            optimizer = AdaBelief(self._model.parameters(),
+                                  lr=1e-3,
+                                  eps=1e-16,  # try 1e-8 and 1e-16
+                                  betas=(0.9, 0.999),
+                                  weight_decouple=True,  # Try True/False
+                                  rectify=False)
 
-        # lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer,
-        #                                                      gamma=0.1)
-        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
-                                                                  mode='min',
-                                                                  factor=0.5,
-                                                                  patience=5,
-                                                                  verbose=True)
+        if self.lr_scheduling == 'Constant':
+            lr_scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer=optimizer,
+                                                               factor=1,
+                                                               total_iters=0)
+        elif self.lr_scheduling == 'Exponential':
+            lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer,
+                                                                  gamma=0.1)
+        elif self.lr_scheduling == 'ReduceOnPlateau':
+            lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
+                                                                      mode='min',
+                                                                      factor=0.5,
+                                                                      patience=5,
+                                                                      verbose=True)
         return [optimizer], [lr_scheduler]
 
     def training_step(self, batch, batch_idx):
@@ -337,6 +347,8 @@ def train(
         max_epochs: int = 600,
         augment_intensity: bool = False,
         augment_spatial: bool = False,
+        optimizer: str = 'Adam',
+        lr_scheduling: str = 'Constant',
         mixed_precision: bool = True,
         cache_rate: float = 1.0,
         save_nifti: bool = True,
@@ -371,6 +383,8 @@ def train(
     net.dataset = DataSet(image_dir=image_dir, labels_dir=labels_dir)
     net.intensity_augmentation = augment_intensity
     net.spatial_augmentation = augment_spatial
+    net.optimizer = optimizer
+    net.lr_scheduling = lr_scheduling
     net.cache_rate = cache_rate
 
     # set up loggers and checkpoints
@@ -384,10 +398,10 @@ def train(
     )
 
     # defining early stopping. When val loss improves less than 0 over 30 epochs, the training will be stopped.
-    early_stop_callback = EarlyStopping(monitor="val_loss",
+    early_stop_callback = EarlyStopping(monitor="val_dice",
                                         min_delta=0.00,
-                                        patience=30,
-                                        mode='min',
+                                        patience=50,
+                                        mode='max',
                                         check_finite=True,
                                         )
 
@@ -660,8 +674,10 @@ def cross_validate(
 
     # test_layers = [(16, 32, 64, 128), (16, 32, 64, 128, 256), (16, 32, 64, 128, 256, 516)]
     # test_strides = [(2, 2, 2), (2, 2, 2, 2), (2, 2, 2, 2, 2)]
-    test_layers = [(16, 32, 64, 128, 256), (16, 32, 64, 128, 256, 516)]
-    test_strides = [(2, 2, 2, 2), (2, 2, 2, 2, 2)]
+    # test_layers = [(16, 32, 64, 128, 256), (16, 32, 64, 128, 256, 516)]
+    # test_strides = [(2, 2, 2, 2), (2, 2, 2, 2, 2)]
+    test_layers = [(16, 32, 64, 128, 256)]
+    test_strides = [(2, 2, 2, 2)]
 
     for scenario in range(len(test_layers)):
         output_dir_scenario = output_dir.joinpath(str(test_layers[scenario]))
@@ -706,6 +722,8 @@ def cross_validate(
                   max_epochs=1000,
                   augment_intensity=augment_intensity,
                   augment_spatial=augment_spatial,
+                  optimizer='Adam',
+                  lr_scheduling='Constant',
                   mixed_precision=mixed_precision,
                   cache_rate=cache_rate,
                   save_nifti=save_nifti,
