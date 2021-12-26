@@ -71,7 +71,7 @@ def cross_validate(
 
         --config-file my_config.json --print-defaults
     """
-    sig = inspect.signature(monai_unet.train)
+    sig = inspect.signature(monai_unet.cross_validate)
 
     if print_defaults:
         default_args = {
