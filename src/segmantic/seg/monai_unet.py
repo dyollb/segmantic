@@ -113,8 +113,18 @@ class Net(pytorch_lightning.LightningModule):
     cache_rate: float = 1.0
     intensity_augmentation: bool = False
     spatial_augmentation: bool = False
-    optimizer: str = 'Adam'
-    lr_scheduling: str = 'ReduceOnPlateau'
+    optimizer: dict = {'optimizer': 'Adam',
+                       'lr': 1e-4,
+                       'momentum': 0.9,
+                       'epsilon': 1e-8,
+                       'amsgrad': False,
+                       'weight_decouple': False
+                       }
+    lr_scheduling: dict = {'scheduler': 'Constant',
+                           'factor': 0.5,
+                           'patience': 10,
+                           'T_0': 50,
+                           'T_multi': 1}
 
     @property
     def num_classes(self):
@@ -265,29 +275,40 @@ class Net(pytorch_lightning.LightningModule):
         return val_loader
 
     def configure_optimizers(self):
-        if self.optimizer == 'Adam':
-            optimizer = torch.optim.Adam(self._model.parameters(), 1e-4)
-        elif self.optimizer == 'AdaBelief':
+        if self.optimizer['optimizer'] == 'SGD':
+            optimizer = torch.optim.SGD(self._model.parameters(),
+                                        lr=self.optimizer['lr'],
+                                        momentum=self.optimizer['momentum'])
+        elif self.optimizer['optimizer'] == 'Adam':
+            optimizer = torch.optim.Adam(self._model.parameters(),
+                                         lr=self.optimizer['lr'],
+                                         amsgrad=self.optimizer['amsgrad'])
+        elif self.optimizer['optimizer'] == 'AdaBelief':
             optimizer = AdaBelief(self._model.parameters(),
-                                  lr=1e-3,
-                                  eps=1e-16,  # try 1e-8 and 1e-16
+                                  lr=self.optimizer['lr'],
+                                  eps=self.optimizer['epsilon'],  # try 1e-8 and 1e-16
                                   betas=(0.9, 0.999),
-                                  weight_decouple=True,  # Try True/False
+                                  weight_decouple=self.optimizer['weight_decouple'],  # Try True/False
+                                  fixed_decay=False,
                                   rectify=False)
 
-        if self.lr_scheduling == 'Constant':
+        if self.lr_scheduling['scheduler'] == 'Constant':
             lr_scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer=optimizer,
                                                                factor=1,
                                                                total_iters=0)
-        elif self.lr_scheduling == 'Exponential':
-            lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer,
-                                                                  gamma=0.1)
-        elif self.lr_scheduling == 'ReduceOnPlateau':
+
+        elif self.lr_scheduling['scheduler'] == 'ReduceOnPlateau':
             lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
                                                                       mode='min',
-                                                                      factor=0.5,
-                                                                      patience=5,
+                                                                      factor=self.lr_scheduling['factor'],
+                                                                      patience=self.lr_scheduling['patience'],
                                                                       verbose=True)
+
+        elif self.lr_scheduling['scheduler'] == 'Cosine':
+            lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer,
+                                                                                T_0=self.lr_scheduling['T_0'],
+                                                                                T_mult=self.lr_scheduling['T_multi'],
+                                                                                eta_min=0)
         return [optimizer], [lr_scheduler]
 
     def training_step(self, batch, batch_idx):
@@ -337,7 +358,10 @@ class Net(pytorch_lightning.LightningModule):
         mean_val_loss = torch.tensor(val_loss / num_items)
 
         scheduler = self.lr_schedulers()
-        scheduler.step(mean_val_loss)
+        if self.lr_scheduling['scheduler'] == 'ReduceOnPlateau':
+            scheduler.step(mean_val_loss)
+        else:
+            scheduler.step()
 
         tensorboard_logs = {
             "val_dice": mean_val_dice,
@@ -373,13 +397,27 @@ def train(
         max_epochs: int = 600,
         augment_intensity: bool = False,
         augment_spatial: bool = False,
-        optimizer: str = 'Adam',
-        lr_scheduling: str = 'Constant',
+        optimizer=None,
+        lr_scheduling=None,
         mixed_precision: bool = True,
         cache_rate: float = 1.0,
         save_nifti: bool = True,
         gpu_ids: List[int] = [0],
 ):
+    if optimizer is None:
+        optimizer = {'optimizer': 'Adam',
+                     'lr': 1e-4,
+                     'momentum': 0.9,
+                     'epsilon': 1e-8,
+                     'amsgrad': False,
+                     'weight_decouple': False
+                     }
+    if lr_scheduling is None:
+        lr_scheduling = {'scheduler': 'Constant',
+                         'factor': 0.5,
+                         'patience': 10,
+                         'T_0': 50,
+                         'T_multi': 1}
     print_config()
 
     output_dir = Path(output_dir)
@@ -869,37 +907,54 @@ def cross_validate(
 def evolution(
         image_dir: Path,
         labels_dir: Path,
+        test_img_dir: Path,
+        test_lbl_dir: Path,
         tissue_list: Path,
         output_dir: Path,
         checkpoint_file: Path = None,
         num_channels: int = 1,
         spatial_dims: int = 3,
         spatial_size: Sequence[int] = None,
-        max_epochs: int = 100,
-        augment_intensity: bool = False,
-        augment_spatial: bool = False,
+        max_epochs: int = 150,
+        population_size: int = 10,
+        number_of_generations: int = 50,
         mixed_precision: bool = True,
         cache_rate: float = 1.0,
-        save_nifti: bool = True,
+        save_nifti: bool = False,
         gpu_ids: List[int] = [0],
-        evaluate: bool = False,
 ):
     print_config()
-    print('Cross-validating')
-    print(augment_intensity)
+    print('Starting population evolution')
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
+
+    test_img_files = sorted(Path(test_img_dir).glob("*.nii.gz"))
+    test_lbl_files = sorted(Path(test_lbl_dir).glob("*.nii.gz"))
 
     tissue_dict = load_tissue_list(tissue_list)
 
     # Initialize population
     parent_population = initialize_population(population_size)
-    print('This is the initial population: ')
+    print(f'This is the initial population: {parent_population}')
 
     # Evaluate fitness of initial population
-    parent_population_fitness = fitness(parent_population, image_dir=args.image_dir, labels_dir=args.labels_dir,
-                                        log_dir=log_dir, num_classes=num_classes, model_file_name=model_file,
-                                        max_epochs=130, output_dir=args.results_dir, gpu_ids=args.gpu_ids)
+    parent_population_fitness = fitness(parent_population,
+                                        image_dir=image_dir,
+                                        labels_dir=labels_dir,
+                                        test_img_files=test_img_files,
+                                        test_lbl_files=test_lbl_files,
+                                        tissue_list=tissue_list,
+                                        tissue_dict=tissue_dict,
+                                        output_dir=output_dir,
+                                        checkpoint_file=checkpoint_file,
+                                        num_channels=num_channels,
+                                        spatial_dims=spatial_dims,
+                                        spatial_size=spatial_size,
+                                        max_epochs=max_epochs,
+                                        mixed_precision=mixed_precision,
+                                        cache_rate=cache_rate,
+                                        save_nifti=save_nifti,
+                                        gpu_ids=gpu_ids)
 
     for generation in range(number_of_generations):
         offspring_population = []
@@ -914,9 +969,23 @@ def evolution(
             offspring_population.append(o_2)
 
         # evaluate fitness of offspring generation
-        offspring_population_fitness = fitness(parent_population, image_dir=args.image_dir, labels_dir=args.labels_dir,
-                                               log_dir=log_dir, num_classes=num_classes, model_file_name=model_file,
-                                               max_epochs=130, output_dir=args.results_dir, gpu_ids=args.gpu_ids)
+        offspring_population_fitness = fitness(parent_population,
+                                               image_dir=image_dir,
+                                               labels_dir=labels_dir,
+                                               test_img_files=test_img_files,
+                                               test_lbl_files=test_lbl_files,
+                                               tissue_list=tissue_list,
+                                               tissue_dict=tissue_dict,
+                                               output_dir=output_dir,
+                                               checkpoint_file=checkpoint_file,
+                                               num_channels=num_channels,
+                                               spatial_dims=spatial_dims,
+                                               spatial_size=spatial_size,
+                                               max_epochs=max_epochs,
+                                               mixed_precision=mixed_precision,
+                                               cache_rate=cache_rate,
+                                               save_nifti=save_nifti,
+                                               gpu_ids=gpu_ids)
 
         parent_population, parent_population_fitness = environmental_selection(parent_population,
                                                                                offspring_population,
@@ -927,7 +996,7 @@ def evolution(
         for arch in range(10):
             parent_population_df = pd.DataFrame(parent_population_np[arch, :, :])
             print(parent_population_df)
-            temp_name = 'parent_population' + str(arch) + '.csv'
+            temp_name = f'parent_population_{arch}.csv'
             print(temp_name)
             parent_population_df.to_csv(temp_name)
 
@@ -941,3 +1010,81 @@ def evolution(
         temp_name = 'parent_population' + str(arch) + '.csv'
         print(temp_name)
         parent_population_df.to_csv(temp_name)
+
+
+def fitness(
+        population,
+        image_dir: Path,
+        labels_dir: Path,
+        test_img_files: List[Path],
+        test_lbl_files: List[Path],
+        tissue_list: Path,
+        tissue_dict: dict,
+        output_dir: Path,
+        checkpoint_file: Path = None,
+        num_channels: int = 1,
+        spatial_dims: int = 3,
+        spatial_size: Sequence[int] = None,
+        max_epochs: int = 150,
+        mixed_precision: bool = True,
+        cache_rate: float = 1.0,
+        save_nifti: bool = False,
+        gpu_ids: List[int] = [0],
+
+):
+    population_fitness = []
+    for genotype in population:
+        # decode genotype
+        layers = ()
+        strides = ()
+
+        dropout = 0.0
+
+        num_samples = 4
+
+        optimizer = 'Adam'
+        lr_scheduler = 'Constant'
+
+        augment_intensity = False
+        augment_spatial = False
+
+        # train network with decoded settings
+        train(image_dir=image_dir,
+              labels_dir=labels_dir,
+              tissue_list=tissue_list,
+              output_dir=current_output,
+              num_channels=num_channels,
+              spatial_dims=spatial_dims,
+              spatial_size=spatial_size,
+              layers=layers,
+              strides=strides,
+              max_epochs=max_epochs,
+              augment_intensity=augment_intensity,
+              augment_spatial=augment_spatial,
+              optimizer=optimizer,
+              lr_scheduling=lr_scheduler,
+              dropout=dropout,
+              mixed_precision=mixed_precision,
+              cache_rate=cache_rate,
+              save_nifti=save_nifti,
+              gpu_ids=gpu_ids)
+
+        print('training finished')
+        # predict on test set
+        for file in current_output.iterdir():
+            if file.match('*.ckpt'):
+                print('start prediction')
+                predict(model_file=file,
+                        output_dir=current_output,
+                        test_images=test_img_files,
+                        test_labels=test_lbl_files,
+                        tissue_dict=tissue_dict,
+                        layers=layers,
+                        strides=strides,
+                        dropout=dropout,
+                        save_nifti=save_nifti,
+                        gpu_ids=gpu_ids)
+
+        # save dice score to population fitness
+
+    return population_fitness
