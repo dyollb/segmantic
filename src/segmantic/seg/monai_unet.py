@@ -55,6 +55,13 @@ from .evaluation import confusion_matrix
 from .utils import make_device
 from .dataset import DataSet
 from .visualization import make_tissue_cmap, plot_confusion_matrix
+from .genetic_algorithm import (
+    initialize_population,
+    binary_tournament_selection,
+    crossover,
+    environmental_selection,
+    mutation,
+)
 
 
 class Net(pytorch_lightning.LightningModule):
@@ -67,6 +74,7 @@ class Net(pytorch_lightning.LightningModule):
             dataset: Optional[DataSet] = None,
             layers: tuple = (16, 32, 64, 128, 256),
             strides: tuple = (2, 2, 2, 2),
+            dropout: float = 0.0,
     ):
         super().__init__()
         self._model = UNet(
@@ -75,6 +83,7 @@ class Net(pytorch_lightning.LightningModule):
             out_channels=num_classes,
             channels=layers,
             strides=strides,
+            dropout=dropout,
             num_res_units=2,
             norm=Norm.BATCH,
         )
@@ -235,6 +244,7 @@ class Net(pytorch_lightning.LightningModule):
             cache_rate=self.cache_rate,
             num_workers=0,
         )
+
     def train_dataloader(self):
         print(len(self.train_ds))
         print(type(self.train_ds))
@@ -359,6 +369,7 @@ def train(
         spatial_size: Sequence[int] = None,
         layers: tuple = (16, 32, 64, 128, 256),
         strides: tuple = (2, 2, 2, 2),
+        dropout: float = 0.0,
         max_epochs: int = 600,
         augment_intensity: bool = False,
         augment_spatial: bool = False,
@@ -393,7 +404,8 @@ def train(
             spatial_dims=spatial_dims,
             spatial_size=spatial_size,
             layers=layers,
-            strides=strides
+            strides=strides,
+            dropout=dropout
         )
     net.dataset = DataSet(image_dir=image_dir, labels_dir=labels_dir)
     net.intensity_augmentation = augment_intensity
@@ -497,6 +509,7 @@ def predict(
         tissue_dict: Dict[str, int] = None,
         layers: tuple = (16, 32, 64, 128, 256),
         strides: tuple = (2, 2, 2, 2),
+        dropout: float = 0.0,
         save_nifti: bool = True,
         gpu_ids: list = [],
 ):
@@ -508,7 +521,7 @@ def predict(
             settings = json.load(json_file)
         net = Net.load_from_checkpoint(f"{model_file}", **settings)
     else:
-        net = Net.load_from_checkpoint(f"{model_file}", layers=layers, strides=strides)
+        net = Net.load_from_checkpoint(f"{model_file}", layers=layers, strides=strides, dropout=dropout)
     num_classes = net.num_classes
 
     net.eval()
@@ -636,7 +649,8 @@ def predict(
                         tissue_names,
                         file_name=output_dir / (base + "_confusion.png"),
                     )
-        np.savetxt(output_dir.joinpath('mean_dice_' + str(model_file.stem) + '_generalize.txt'), all_mean_dice, delimiter=',')
+        np.savetxt(output_dir.joinpath('mean_dice_' + str(model_file.stem) + '_generalize.txt'), all_mean_dice,
+                   delimiter=',')
 
 
 def cross_validate(
@@ -815,7 +829,8 @@ def cross_validate(
         print(model_scores_df)
         plt.show()
         assert False
-        generalize_test_img_path = Path("M:/DATA/ITIS/MasterThesis/Datasets/T1_T2/T1_T2_spacing_(1, 1, 1)/Hummel_Nibabel")
+        generalize_test_img_path = Path(
+            "M:/DATA/ITIS/MasterThesis/Datasets/T1_T2/T1_T2_spacing_(1, 1, 1)/Hummel_Nibabel")
         generalize_test_label_path = Path("M:/DATA/ITIS/MasterThesis/Labels/SimNIBS/cat_12/no_ventricles/Hummel")
 
         generalize_img = []
@@ -849,3 +864,80 @@ def cross_validate(
                                     gpu_ids=gpu_ids)
             else:
                 continue
+
+
+def evolution(
+        image_dir: Path,
+        labels_dir: Path,
+        tissue_list: Path,
+        output_dir: Path,
+        checkpoint_file: Path = None,
+        num_channels: int = 1,
+        spatial_dims: int = 3,
+        spatial_size: Sequence[int] = None,
+        max_epochs: int = 100,
+        augment_intensity: bool = False,
+        augment_spatial: bool = False,
+        mixed_precision: bool = True,
+        cache_rate: float = 1.0,
+        save_nifti: bool = True,
+        gpu_ids: List[int] = [0],
+        evaluate: bool = False,
+):
+    print_config()
+    print('Cross-validating')
+    print(augment_intensity)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+
+    tissue_dict = load_tissue_list(tissue_list)
+
+    # Initialize population
+    parent_population = initialize_population(population_size)
+    print('This is the initial population: ')
+
+    # Evaluate fitness of initial population
+    parent_population_fitness = fitness(parent_population, image_dir=args.image_dir, labels_dir=args.labels_dir,
+                                        log_dir=log_dir, num_classes=num_classes, model_file_name=model_file,
+                                        max_epochs=130, output_dir=args.results_dir, gpu_ids=args.gpu_ids)
+
+    for generation in range(number_of_generations):
+        offspring_population = []
+        while len(offspring_population) < population_size:
+            o_1, o_2 = crossover(parent_population, fitness=parent_population_fitness,
+                                 p_c=0.9,
+                                 mu=0.2)
+            o_1 = mutation(o_1, 0.7, 0.05)
+            o_2 = mutation(o_2, 0.7, 0.05)
+
+            offspring_population.append(o_1)
+            offspring_population.append(o_2)
+
+        # evaluate fitness of offspring generation
+        offspring_population_fitness = fitness(parent_population, image_dir=args.image_dir, labels_dir=args.labels_dir,
+                                               log_dir=log_dir, num_classes=num_classes, model_file_name=model_file,
+                                               max_epochs=130, output_dir=args.results_dir, gpu_ids=args.gpu_ids)
+
+        parent_population, parent_population_fitness = environmental_selection(parent_population,
+                                                                               offspring_population,
+                                                                               fitness_parents=parent_population_fitness,
+                                                                               fitness_offspring=offspring_population_fitness)
+        # Intermediate saves of the current parrent population
+        parent_population_np = np.asarray(parent_population)
+        for arch in range(10):
+            parent_population_df = pd.DataFrame(parent_population_np[arch, :, :])
+            print(parent_population_df)
+            temp_name = 'parent_population' + str(arch) + '.csv'
+            print(temp_name)
+            parent_population_df.to_csv(temp_name)
+
+    # Saving the final parent population
+    print(parent_population)
+    print(parent_population_fitness)
+    parent_population_np = np.asarray(parent_population)
+    for arch in range(10):
+        parent_population_df = pd.DataFrame(parent_population_np[arch, :, :])
+        print(parent_population_df)
+        temp_name = 'parent_population' + str(arch) + '.csv'
+        print(temp_name)
+        parent_population_df.to_csv(temp_name)

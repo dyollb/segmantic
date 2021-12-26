@@ -93,6 +93,44 @@ def cross_validate(
 
 
 @app.command()
+def evolution(
+    config_file: Path = typer.Option(
+        ..., "--config-file", "-c", help="config file in json format"
+    ),
+    print_defaults: bool = False,
+):
+    """Run Genetic UNet with configuration provided as json file
+
+    Example invocation:
+
+        --config-file my_config.json
+
+    To generate a default config:
+
+        --config-file my_config.json --print-defaults
+    """
+    sig = inspect.signature(monai_unet.evolution)
+
+    if print_defaults:
+        default_args = {
+            k: v.default
+            if v.default is not inspect.Parameter.empty
+            else f"<required option: {v.annotation.__name__}>"
+            for k, v in sig.parameters.items()
+        }
+        config_file.write_text(json.dumps(default_args, indent=4))
+        return
+
+    cast_path = (
+        lambda v, k: Path(v) if isinstance(sig.parameters[k].annotation, Path) else v
+    )
+
+    args: dict = json.loads(config_file.read_text())
+    args = {k: cast_path(v, k) for k, v in args.items()}
+    monai_unet.cross_validate(**args)
+
+
+@app.command()
 def train(
     image_dir: Path = typer.Option(
         ..., "--image-dir", "-i", help="directory containing images"
