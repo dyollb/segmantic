@@ -62,6 +62,7 @@ from .genetic_algorithm import (
     environmental_selection,
     mutation,
 )
+from .decode_genotypes import decode_optimizer_gene, decode_lr_scheduler_gene
 
 
 class Net(pytorch_lightning.LightningModule):
@@ -113,6 +114,7 @@ class Net(pytorch_lightning.LightningModule):
     cache_rate: float = 1.0
     intensity_augmentation: bool = False
     spatial_augmentation: bool = False
+    num_samples: int = 4
     optimizer: dict = {'optimizer': 'Adam',
                        'lr': 1e-4,
                        'momentum': 0.9,
@@ -215,7 +217,7 @@ class Net(pytorch_lightning.LightningModule):
                     image_key="image",
                     spatial_size=spatial_size,
                     num_classes=self.num_classes,
-                    num_samples=4,
+                    num_samples=self.num_samples,
                     image_threshold=-np.inf,
                 )
             )
@@ -397,6 +399,7 @@ def train(
         max_epochs: int = 600,
         augment_intensity: bool = False,
         augment_spatial: bool = False,
+        num_samples: int = 4,
         optimizer=None,
         lr_scheduling=None,
         mixed_precision: bool = True,
@@ -448,6 +451,7 @@ def train(
     net.dataset = DataSet(image_dir=image_dir, labels_dir=labels_dir)
     net.intensity_augmentation = augment_intensity
     net.spatial_augmentation = augment_spatial
+    net.num_samples = num_samples
     net.optimizer = optimizer
     net.lr_scheduling = lr_scheduling
     net.cache_rate = cache_rate
@@ -703,6 +707,7 @@ def cross_validate(
         max_epochs: int = 100,
         augment_intensity: bool = False,
         augment_spatial: bool = False,
+        num_samples: int = 4,
         mixed_precision: bool = True,
         cache_rate: float = 1.0,
         n_splits: int = 7,
@@ -794,6 +799,7 @@ def cross_validate(
                       max_epochs=600,
                       augment_intensity=augment_intensity,
                       augment_spatial=augment_spatial,
+                      num_samples=num_samples,
                       optimizer='Adam',
                       lr_scheduling='Constant',
                       mixed_precision=mixed_precision,
@@ -1035,18 +1041,73 @@ def fitness(
     population_fitness = []
     for genotype in population:
         # decode genotype
-        layers = ()
-        strides = ()
+        print(genotype)
+        augment_intensity = True if genotype[0] else False
+        augment_spatial = True if genotype[1] else False
 
-        dropout = 0.0
+        dropout_gene = genotype[2:4]
+        if dropout_gene == [0, 0]:
+            dropout = 0.0
+        elif dropout_gene == [0, 1]:
+            dropout = 0.2
+        elif dropout_gene == [1, 0]:
+            dropout = 0.3
+        else:
+            dropout = 0.5
 
-        num_samples = 4
+        print(dropout_gene)
+        print(dropout)
 
-        optimizer = 'Adam'
-        lr_scheduler = 'Constant'
+        layers_gene = genotype[4:6]
+        if layers_gene == [0, 0]:
+            layers = (16, 32, 64, 128)
+            strides = (2, 2, 2)
+        elif layers_gene == [0, 1]:
+            layers = (16, 32, 64, 128, 256)
+            strides = (2, 2, 2, 2)
+        elif layers_gene == [1, 0]:
+            layers = (64, 128, 256, 512, 1024)
+            strides = (2, 2, 2, 2)
+        else:
+            layers = (16, 32, 64, 128, 256, 516)
+            strides = (2, 2, 2, 2, 2)
 
-        augment_intensity = False
-        augment_spatial = False
+        print(layers_gene)
+        print(layers)
+        print(strides)
+
+        num_samples_gene = genotype[6:8]
+        if num_samples_gene == [0, 0]:
+            num_samples = 4
+        elif num_samples_gene == [0, 1]:
+            num_samples = 5
+        elif num_samples_gene == [1, 0]:
+            num_samples = 6
+        else:
+            num_samples = 7
+
+        print(num_samples_gene)
+        print(num_samples)
+
+        optimizer_gene = genotype[8:12]
+        optimizer_gene_np = np.asarray(optimizer_gene)
+        bin_to_dec = optimizer_gene_np.dot(1 << np.arange(optimizer_gene_np.shape[-1]))
+        optimizer = decode_optimizer_gene(bin_to_dec)
+
+        print(optimizer_gene)
+        print(bin_to_dec)
+        print(optimizer)
+
+        lr_scheduler_gene = genotype[12:15]
+        lr_scheduler_gene_np = np.asarray(lr_scheduler_gene)
+        bin_to_dec = lr_scheduler_gene_np.dot(1 << np.arange(lr_scheduler_gene_np.shape[-1]))
+        lr_scheduler = decode_lr_scheduler_gene(bin_to_dec)
+
+        print(lr_scheduler_gene)
+        print(bin_to_dec)
+        print(lr_scheduler)
+
+        assert False
 
         # train network with decoded settings
         train(image_dir=image_dir,
@@ -1061,6 +1122,7 @@ def fitness(
               max_epochs=max_epochs,
               augment_intensity=augment_intensity,
               augment_spatial=augment_spatial,
+              num_samples=num_samples,
               optimizer=optimizer,
               lr_scheduling=lr_scheduler,
               dropout=dropout,

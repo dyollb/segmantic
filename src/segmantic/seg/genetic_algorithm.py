@@ -1,9 +1,8 @@
 import random
 import numpy as np
 
-bits_per_block_gene = 14
-block_gene_per_architecture = 7
-population_size = 10
+bits_per_genotype = 15
+
 
 """
 population_size = N genotypes forming the population
@@ -12,16 +11,15 @@ Output:
 
 inizial population
 """
+
+
 def initialize_population(population_size):
     initial_population = []
-    for architecture in range(population_size):
-        temp_architecture = []
-        for block_gene in range(block_gene_per_architecture):
-            temp_block_gene = []
-            for bit in range(bits_per_block_gene):
-                temp_block_gene.append(random.randint(0, 1))
-            temp_architecture.append(temp_block_gene)
-        initial_population.append(temp_architecture)
+    for genotype in range(population_size):
+        temp_genotype = []
+        for bit in range(bits_per_genotype):
+            temp_genotype.append(random.randint(0, 1))
+        initial_population.append(temp_genotype)
     return initial_population
 
 
@@ -53,6 +51,8 @@ Output:
 
 two offspring
 """
+
+
 def crossover(population, fitness, p_c, mu):
     # loop over population 10 times
     for j in range(10):
@@ -132,6 +132,8 @@ output
 
 next_generation: new generation comprising individuals from parent and offspring generation
 """
+
+
 def environmental_selection(parent_population, offspring_population, fitness_parents, fitness_offspring):
     next_generation = []
     next_generation_fitness = []
@@ -160,7 +162,7 @@ def environmental_selection(parent_population, offspring_population, fitness_par
             reduced_combined_fitness.append(combined_fitness[idx])
 
     # fill up the next generation with individuals choosen by binary tournament selection
-    while len(parent_population)>len(next_generation):
+    while len(parent_population) > len(next_generation):
         winner_parent, winner_parent_fitness = binary_tournament_selection(combined_population, combined_fitness)
         next_generation.append(winner_parent)
         next_generation_fitness.append(winner_parent_fitness)
@@ -173,6 +175,7 @@ architecture = list describing the architecture with its block genes
 p_m = mutation probability
 p_b = probability for bit to flip
 """
+
 
 def mutation(architecture, p_m, p_b):
     architecture_np = np.asarray(architecture).reshape(-1)
