@@ -50,6 +50,10 @@ import shutil
 
 from sklearn.model_selection import KFold, StratifiedKFold
 
+import pyttsx3
+import winsound
+import time
+
 from ..prepro.labels import load_tissue_list
 from .evaluation import confusion_matrix
 from .utils import make_device
@@ -63,6 +67,13 @@ from .genetic_algorithm import (
     mutation,
 )
 from .decode_genotypes import decode_optimizer_gene, decode_lr_scheduler_gene
+
+
+engine = pyttsx3.init()
+
+voices = engine.getProperty('voices')
+engine.setProperty('voice', voices[3].id)
+engine. setProperty("rate", 150)
 
 
 class Net(pytorch_lightning.LightningModule):
@@ -1055,7 +1066,8 @@ def fitness(
         current_output = output_dir / folder_name
         current_output.mkdir(exist_ok=True)
 
-        # genotype = [0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1]
+        # genotype = [0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1]
+
         # decode genotype
         print(genotype)
         augment_intensity = True if genotype[0] else False
@@ -1104,6 +1116,13 @@ def fitness(
 
         print(num_samples_gene)
         print(num_samples)
+
+        if layers_gene == [1, 0] and num_samples_gene == [1, 1]:
+            winsound.PlaySound("SystemExclamation", winsound.SND_ALIAS)
+            engine.say("緊急高いＧＰＵメモリ使用量速報です。すぐにゲームを閉じてください")
+            engine.runAndWait()
+            time.sleep(10)
+            winsound.PlaySound("SystemExclamation", winsound.SND_ALIAS)
 
         optimizer_gene = genotype[8:12]
         optimizer_gene_np = np.asarray(optimizer_gene)
