@@ -26,11 +26,17 @@ def initialize_population(population_size):
 def binary_tournament_selection(population, fitness):
     # choose two random indexes smaller than length of population
     parents_idx = random.choices(range(len(population)), k=2)
-
+    print('in tournametn selection')
+    print('Population:')
+    print(population)
+    print('fitness')
+    print(fitness)
     # extract these parents respective fitness
     p_1_fitness = fitness[parents_idx[0]]
     p_2_fitness = fitness[parents_idx[1]]
-
+    print('contrahent fitnesses:')
+    print(p_1_fitness)
+    print(p_2_fitness)
     # find stronger parent and return it
     if p_1_fitness > p_2_fitness:
         stronger_parent = population[parents_idx[0]]
@@ -38,7 +44,9 @@ def binary_tournament_selection(population, fitness):
     else:
         stronger_parent = population[parents_idx[1]]
         stronger_parent_fitness = p_2_fitness
-
+    print('stronger parent')
+    print(stronger_parent)
+    print(stronger_parent_fitness)
     return stronger_parent, stronger_parent_fitness
 
 
@@ -59,22 +67,33 @@ def crossover(population, fitness, p_c, mu):
         # select two parents p1, p2 by binary tournament selection
         winner_parent_1, w_p_1_f = binary_tournament_selection(population, fitness)
         winner_parent_2, w_p_2_f = binary_tournament_selection(population, fitness)
-
+        print('Winner Parent 1')
+        print(type(winner_parent_1))
+        print(winner_parent_1)
+        print(w_p_1_f)
         # compute difference between p1, p2 (hamming distance normalized to 0-1)
         p_1 = np.asarray(winner_parent_1)
         p_2 = np.asarray(winner_parent_2)
+
+        print('After converstion to numpy')
+        print(type(p_1))
+        print(p_1)
 
         differences = np.zeros(p_1.shape)
         differences[p_1 != p_2] = 1
         unique, counts = np.unique(differences, return_counts=True)
         temp_dict = dict(zip(unique, counts))
+        print('Differences dict:')
         print(temp_dict)
         if len(temp_dict) == 1:
+            # if only 0 in dictionary, they are the same
             normalized_hamming = 0
         else:
             hamming_distance = temp_dict[1]
+            print('hamming distance:')
             print(hamming_distance)
             normalized_hamming = hamming_distance / (temp_dict[0] + temp_dict[1])
+        print('normalized hamming:')
         print(normalized_hamming)
 
         if normalized_hamming > mu:
@@ -87,30 +106,41 @@ def crossover(population, fitness, p_c, mu):
     if r < p_c:
         # mate
         # reshape genotype of parents
-        p_1_resh = p_1.reshape(-1)
-        p_2_resh = p_2.reshape(-1)
+        # p_1_resh = p_1.reshape(-1)
+        # p_2_resh = p_2.reshape(-1)
+        print('Mating:')
+        print('p1')
+        print(p_1)
+        print('p2')
+        print(p_2)
         # compute length of p1 and p2
-        parent_length = len(p_1_resh)
+        parent_length = len(p_1)
         # randomly choose 10 different integers from [0, len) and sort
-        random_int = random.sample(range(parent_length), 10)
+        random_int = random.sample(range(parent_length), 4)
         random_int_np = np.asarray(random_int)
         sorted_random_int = np.sort(random_int_np)
-        sorted_random_int = sorted_random_int.reshape(5, 2)
+        sorted_random_int = sorted_random_int.reshape(2, 2)
+        print('start_stop indexes:')
+        print(sorted_random_int)
         # crossover implementation: exchange genes at specified intervals between genotypes
         for k in range(len(sorted_random_int)):
             temp_start_idx = sorted_random_int[k, 0]
             temp_stop_idx = sorted_random_int[k, 1]
 
-            p_1_gene = p_1_resh[temp_start_idx:temp_stop_idx]
+            p_1_gene = p_1[temp_start_idx:temp_stop_idx]
             p_1_gene_copy = p_1_gene.copy()
-            p_2_gene = p_2_resh[temp_start_idx:temp_stop_idx]
+            p_2_gene = p_2[temp_start_idx:temp_stop_idx]
 
-            p_1_resh[temp_start_idx:temp_stop_idx] = p_2_gene
-            p_2_resh[temp_start_idx:temp_stop_idx] = p_1_gene_copy
+            p_1[temp_start_idx:temp_stop_idx] = p_2_gene
+            p_2[temp_start_idx:temp_stop_idx] = p_1_gene_copy
 
-        p_1 = p_1_resh.reshape(block_gene_per_architecture, bits_per_block_gene)
-        p_2 = p_2_resh.reshape(block_gene_per_architecture, bits_per_block_gene)
-
+        # p_1 = p_1_resh.reshape(block_gene_per_architecture, bits_per_block_gene)
+        # p_2 = p_2_resh.reshape(block_gene_per_architecture, bits_per_block_gene)
+        print('After Crossover')
+        print(type(p_1))
+        print(p_1)
+        print(type(p_2))
+        print(p_2)
         # Assign offspring
         o_1 = p_1.tolist()
         o_2 = p_2.tolist()
@@ -177,23 +207,27 @@ p_b = probability for bit to flip
 """
 
 
-def mutation(architecture, p_m, p_b):
-    architecture_np = np.asarray(architecture).reshape(-1)
-    print(architecture_np)
+def mutation(genotype, p_m, p_b):
+    print('in mutation')
+    print(type(genotype))
+    # genotype_np = np.asarray(genotype).reshape(-1)
+    genotype_np = np.asarray(genotype)
+    print('genotype before mutation')
+    print(genotype_np)
     # check if mutation will occur
     r = random.uniform(0, 1)
     if r < p_m:
         print('mutation happens')
         # check flipping probability for every bit in the genotype
-        for gene in range(len(architecture_np)):
+        for gene in range(len(genotype_np)):
             r = random.uniform(0, 1)
             if r < p_b:
                 print('gene flipped')
-                architecture_np[gene] = 1 if architecture_np[gene] == 0 else 0
+                genotype_np[gene] = 1 if genotype_np[gene] == 0 else 0
+    print('Genotype after mutation')
+    print(genotype_np)
+    # architecture_np_resh = architecture_np.reshape(block_gene_per_architecture, bits_per_block_gene)
 
-    print(architecture_np)
-    architecture_np_resh = architecture_np.reshape(block_gene_per_architecture, bits_per_block_gene)
+    mutated_genotype = genotype_np.tolist()
 
-    mutated_architecture = architecture_np_resh.tolist()
-
-    return mutated_architecture
+    return mutated_genotype

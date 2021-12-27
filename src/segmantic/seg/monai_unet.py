@@ -262,7 +262,7 @@ class Net(pytorch_lightning.LightningModule):
         print(type(self.train_ds))
         train_loader = torch.utils.data.DataLoader(
             self.train_ds,
-            batch_size=8,
+            batch_size=6,
             shuffle=True,
             num_workers=0,
             collate_fn=list_data_collate,
@@ -943,6 +943,9 @@ def evolution(
     parent_population = initialize_population(population_size)
     print(f'This is the initial population: {parent_population}')
 
+    generation_0_dir = output_dir / '0'
+    generation_0_dir.mkdir(exist_ok=True)
+
     # Evaluate fitness of initial population
     parent_population_fitness = fitness(parent_population,
                                         image_dir=image_dir,
@@ -951,7 +954,7 @@ def evolution(
                                         test_lbl_files=test_lbl_files,
                                         tissue_list=tissue_list,
                                         tissue_dict=tissue_dict,
-                                        output_dir=output_dir,
+                                        output_dir=generation_0_dir,
                                         checkpoint_file=checkpoint_file,
                                         num_channels=num_channels,
                                         spatial_dims=spatial_dims,
@@ -964,6 +967,9 @@ def evolution(
 
     for generation in range(number_of_generations):
         offspring_population = []
+        current_generation_dir = generation_0_dir.with_name(str(generation+1))
+        current_generation_dir.mkdir(exist_ok=True)
+
         while len(offspring_population) < population_size:
             o_1, o_2 = crossover(parent_population, fitness=parent_population_fitness,
                                  p_c=0.9,
@@ -982,7 +988,7 @@ def evolution(
                                                test_lbl_files=test_lbl_files,
                                                tissue_list=tissue_list,
                                                tissue_dict=tissue_dict,
-                                               output_dir=output_dir,
+                                               output_dir=current_generation_dir,
                                                checkpoint_file=checkpoint_file,
                                                num_channels=num_channels,
                                                spatial_dims=spatial_dims,
@@ -999,23 +1005,21 @@ def evolution(
                                                                                fitness_offspring=offspring_population_fitness)
         # Intermediate saves of the current parrent population
         parent_population_np = np.asarray(parent_population)
-        for arch in range(10):
-            parent_population_df = pd.DataFrame(parent_population_np[arch, :, :])
-            print(parent_population_df)
-            temp_name = f'parent_population_{arch}.csv'
-            print(temp_name)
-            parent_population_df.to_csv(temp_name)
+        for count, genotype in enumerate(parent_population_np):
+            parent_population_df = pd.DataFrame(genotype)
+            temp_name = f'parent_gen_genotype_{count}.csv'
+            temp_path = current_generation_dir / temp_name
+            parent_population_df.to_csv(temp_path)
 
     # Saving the final parent population
     print(parent_population)
     print(parent_population_fitness)
     parent_population_np = np.asarray(parent_population)
-    for arch in range(10):
-        parent_population_df = pd.DataFrame(parent_population_np[arch, :, :])
-        print(parent_population_df)
-        temp_name = 'parent_population' + str(arch) + '.csv'
-        print(temp_name)
-        parent_population_df.to_csv(temp_name)
+    for count, genotype in enumerate(parent_population_np):
+        parent_population_df = pd.DataFrame(genotype)
+        temp_name = f'final_gen_genotype_{count}.csv'
+        temp_path = output_dir / temp_name
+        parent_population_df.to_csv(temp_path)
 
 
 def fitness(
@@ -1039,7 +1043,14 @@ def fitness(
 
 ):
     population_fitness = []
-    for genotype in population:
+    for count, genotype in enumerate(population):
+        print(type(genotype))
+        # Create output folder for genotype
+        folder_name = f'{count}.{genotype}'
+        current_output = output_dir / folder_name
+        current_output.mkdir(exist_ok=True)
+
+        # genotype = [0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1]
         # decode genotype
         print(genotype)
         augment_intensity = True if genotype[0] else False
@@ -1078,13 +1089,13 @@ def fitness(
 
         num_samples_gene = genotype[6:8]
         if num_samples_gene == [0, 0]:
-            num_samples = 4
+            num_samples = 3
         elif num_samples_gene == [0, 1]:
-            num_samples = 5
+            num_samples = 4
         elif num_samples_gene == [1, 0]:
-            num_samples = 6
+            num_samples = 5
         else:
-            num_samples = 7
+            num_samples = 6
 
         print(num_samples_gene)
         print(num_samples)
@@ -1106,8 +1117,6 @@ def fitness(
         print(lr_scheduler_gene)
         print(bin_to_dec)
         print(lr_scheduler)
-
-        assert False
 
         # train network with decoded settings
         train(image_dir=image_dir,
@@ -1133,20 +1142,32 @@ def fitness(
 
         print('training finished')
         # predict on test set
+        temp_best_dice = 0
         for file in current_output.iterdir():
             if file.match('*.ckpt'):
-                print('start prediction')
-                predict(model_file=file,
-                        output_dir=current_output,
-                        test_images=test_img_files,
-                        test_labels=test_lbl_files,
-                        tissue_dict=tissue_dict,
-                        layers=layers,
-                        strides=strides,
-                        dropout=dropout,
-                        save_nifti=save_nifti,
-                        gpu_ids=gpu_ids)
+                if float(file.stem[-6:]) > temp_best_dice:
+                    temp_best_dice = float(file.stem[-6:])
+                    current_best_model = file
+                    print(temp_best_dice)
+                    print(current_best_model)
+        print('start prediction')
+        predict(model_file=current_best_model,
+                output_dir=current_output,
+                test_images=test_img_files,
+                test_labels=test_lbl_files,
+                tissue_dict=tissue_dict,
+                layers=layers,
+                strides=strides,
+                dropout=dropout,
+                save_nifti=save_nifti,
+                gpu_ids=gpu_ids)
 
         # save dice score to population fitness
+        for file in current_output.iterdir():
+            if file.match('*.txt'):
+                temp_data = np.genfromtxt(file, delimiter=',')
+                temp_mean_model = np.mean(temp_data)
+        population_fitness.append(temp_mean_model)
+        print(population_fitness)
 
     return population_fitness
