@@ -404,6 +404,7 @@ def train(
         lr_scheduling=None,
         mixed_precision: bool = True,
         cache_rate: float = 1.0,
+        early_stop_patience: int = 50,
         save_nifti: bool = True,
         gpu_ids: List[int] = [0],
 ):
@@ -469,7 +470,7 @@ def train(
     # defining early stopping. When val loss improves less than 0 over 30 epochs, the training will be stopped.
     early_stop_callback = EarlyStopping(monitor="val_dice",
                                         min_delta=0.00,
-                                        patience=50,
+                                        patience=early_stop_patience,
                                         mode='max',
                                         check_finite=True,
                                         )
@@ -926,6 +927,7 @@ def evolution(
         number_of_generations: int = 50,
         mixed_precision: bool = True,
         cache_rate: float = 1.0,
+        early_stop_patience: int = 150,
         save_nifti: bool = False,
         gpu_ids: List[int] = [0],
 ):
@@ -962,6 +964,7 @@ def evolution(
                                         max_epochs=max_epochs,
                                         mixed_precision=mixed_precision,
                                         cache_rate=cache_rate,
+                                        early_stop_patience=early_stop_patience,
                                         save_nifti=save_nifti,
                                         gpu_ids=gpu_ids)
 
@@ -996,6 +999,7 @@ def evolution(
                                                max_epochs=max_epochs,
                                                mixed_precision=mixed_precision,
                                                cache_rate=cache_rate,
+                                               early_stop_patience=early_stop_patience,
                                                save_nifti=save_nifti,
                                                gpu_ids=gpu_ids)
 
@@ -1038,6 +1042,7 @@ def fitness(
         max_epochs: int = 150,
         mixed_precision: bool = True,
         cache_rate: float = 1.0,
+        early_stop_patience: int = 150,
         save_nifti: bool = False,
         gpu_ids: List[int] = [0],
 
@@ -1137,6 +1142,7 @@ def fitness(
               dropout=dropout,
               mixed_precision=mixed_precision,
               cache_rate=cache_rate,
+              early_stop_patience=early_stop_patience,
               save_nifti=save_nifti,
               gpu_ids=gpu_ids)
 
