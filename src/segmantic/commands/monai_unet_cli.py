@@ -127,7 +127,7 @@ def evolution(
 
     args: dict = json.loads(config_file.read_text())
     args = {k: cast_path(v, k) for k, v in args.items()}
-    monai_unet.cross_validate(**args)
+    monai_unet.evolution(**args)
 
 
 @app.command()
