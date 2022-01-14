@@ -47,6 +47,8 @@ import json
 from typing import List, Optional, Dict, Sequence
 from pathlib import Path
 import shutil
+import subprocess as sp
+import sys
 
 from sklearn.model_selection import KFold, StratifiedKFold
 
@@ -68,12 +70,11 @@ from .genetic_algorithm import (
 )
 from .decode_genotypes import decode_optimizer_gene, decode_lr_scheduler_gene
 
-
 engine = pyttsx3.init()
 
 voices = engine.getProperty('voices')
 engine.setProperty('voice', voices[3].id)
-engine. setProperty("rate", 150)
+engine.setProperty("rate", 150)
 
 
 class Net(pytorch_lightning.LightningModule):
@@ -273,7 +274,7 @@ class Net(pytorch_lightning.LightningModule):
         print(type(self.train_ds))
         train_loader = torch.utils.data.DataLoader(
             self.train_ds,
-            batch_size=6,
+            batch_size=5,
             shuffle=True,
             num_workers=0,
             collate_fn=list_data_collate,
@@ -443,6 +444,13 @@ def train(
     num_classes = max(tissue_dict.values()) + 1
     if not len(tissue_dict) == num_classes:
         raise ValueError("Expecting contiguous labels in range [0,N-1]")
+
+    if layers == [64, 128, 256, 512, 1024] and num_samples >= 5:
+        winsound.PlaySound("SystemExclamation", winsound.SND_ALIAS)
+        engine.say("緊急高いＧＰＵメモリ使用量速報です。すぐにゲームを閉じてください")
+        engine.runAndWait()
+        time.sleep(10)
+        winsound.PlaySound("SystemExclamation", winsound.SND_ALIAS)
 
     device = make_device(gpu_ids)
 
@@ -712,214 +720,106 @@ def cross_validate(
         labels_dir: Path,
         tissue_list: Path,
         output_dir: Path,
+        config_files_dir: Path,
         checkpoint_file: Path = None,
-        num_channels: int = 1,
-        spatial_dims: int = 3,
-        spatial_size: Sequence[int] = None,
         max_epochs: int = 100,
-        augment_intensity: bool = False,
-        augment_spatial: bool = False,
-        num_samples: int = 4,
-        mixed_precision: bool = True,
-        cache_rate: float = 1.0,
         n_splits: int = 7,
         save_nifti: bool = True,
         gpu_ids: List[int] = [0],
-        evaluate: bool = False,
 ):
     print_config()
     print('Cross-validating')
-    print(augment_intensity)
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
 
     tissue_dict = load_tissue_list(tissue_list)
 
-    if not evaluate:
-        kf = KFold(n_splits=n_splits)
+    kf = KFold(n_splits=n_splits)
 
-        image_files = sorted(Path(image_dir).glob("*.nii.gz"))
-        label_files = sorted(Path(labels_dir).glob("*.nii.gz"))
+    image_files = sorted(Path(image_dir).glob("*.nii.gz"))
+    label_files = sorted(Path(labels_dir).glob("*.nii.gz"))
 
-        image_idx = np.arange(len(image_files))
+    image_idx = np.arange(len(image_files))
 
-        cv_split = Path(Path(image_dir).parent) / 'CV_Split'
-        cv_split_train = cv_split / 'train'
-        cv_split_predict = cv_split / 'predict'
-        cv_split_train_img = cv_split_train / 'images'
-        cv_split_train_lbl = cv_split_train / 'labels'
-        cv_split_predict_img = cv_split_predict / 'images'
-        cv_split_predict_lbl = cv_split_predict / 'labels'
+    cv_split = Path(Path(image_dir).parent) / 'CV_Split'
+    cv_split_train = cv_split / 'train'
+    cv_split_predict = cv_split / 'predict'
+    cv_split_train_img = cv_split_train / 'images'
+    cv_split_train_lbl = cv_split_train / 'labels'
+    cv_split_predict_img = cv_split_predict / 'images'
+    cv_split_predict_lbl = cv_split_predict / 'labels'
 
-        all_paths = [cv_split, cv_split_train, cv_split_predict,
-                     cv_split_train_img, cv_split_train_lbl, cv_split_predict_img, cv_split_predict_lbl]
+    all_paths = [cv_split, cv_split_train, cv_split_predict,
+                 cv_split_train_img, cv_split_train_lbl, cv_split_predict_img, cv_split_predict_lbl]
 
-        for path in all_paths:
-            if not path.exists():
-                path.mkdir()
+    for path in all_paths:
+        if not path.exists():
+            path.mkdir()
 
-        # test_layers = [(16, 32, 64, 128), (16, 32, 64, 128, 256), (16, 32, 64, 128, 256, 516)]
-        # test_strides = [(2, 2, 2), (2, 2, 2, 2), (2, 2, 2, 2, 2)]
-        # test_layers = [(16, 32, 64, 128, 256), (16, 32, 64, 128, 256, 516)]
-        # test_strides = [(2, 2, 2, 2), (2, 2, 2, 2, 2)]
-        test_layers = [(16, 32, 64, 128, 256)]
-        test_strides = [(2, 2, 2, 2)]
+    for config_file in config_files_dir.iterdir():
+        output_dir_scenario = output_dir.joinpath(str(config_file.name))
+        if not output_dir_scenario.exists():
+            output_dir_scenario.mkdir()
 
-        for scenario in range(len(test_layers)):
-            output_dir_scenario = output_dir.joinpath(str(test_layers[scenario]))
-            if not output_dir_scenario.exists():
-                output_dir_scenario.mkdir()
-            for train_idx, test_idx in kf.split(image_idx, image_idx):
+        with open(config_file, 'r+') as f:
+            data = json.load(f)
+            data['image_dir'] = cv_split_train_img
+            data['labels_dir'] = cv_split_train_lbl
+            data['output_dir'] = output_dir_scenario
+            current_layers = data['layers']
+            current_strides = data['strides']
 
-                current_output = output_dir_scenario.joinpath(str(test_idx))
-                print(current_output)
-                if current_output.exists():
-                    continue
-                else:
-                    current_output.mkdir()
+        for train_idx, test_idx in kf.split(image_idx, image_idx):
 
-                # Delete all files from the temporary file dirs
-                for folder in all_paths:
-                    if folder.match('images') or folder.match('labels'):
-                        for file in folder.iterdir():
-                            file.unlink()
-
-                # set new splits
-                image_train = [image_files[index] for index in train_idx]
-                image_test = [image_files[index] for index in test_idx]
-                label_train = [label_files[index] for index in train_idx]
-                label_test = [label_files[index] for index in test_idx]
-
-                for file in image_train:
-                    shutil.copyfile(file, cv_split_train_img.joinpath(file.name))
-                for file in image_test:
-                    shutil.copyfile(file, cv_split_predict_img.joinpath(file.name))
-                for file in label_train:
-                    shutil.copyfile(file, cv_split_train_lbl.joinpath(file.name))
-                for file in label_test:
-                    shutil.copyfile(file, cv_split_predict_lbl.joinpath(file.name))
-                print('start training')
-                train(image_dir=cv_split_train_img,
-                      labels_dir=cv_split_train_lbl,
-                      tissue_list=tissue_list,
-                      output_dir=current_output,
-                      num_channels=num_channels,
-                      spatial_dims=spatial_dims,
-                      spatial_size=spatial_size,
-                      layers=test_layers[scenario],
-                      strides=test_strides[scenario],
-                      max_epochs=600,
-                      augment_intensity=augment_intensity,
-                      augment_spatial=augment_spatial,
-                      num_samples=num_samples,
-                      optimizer='Adam',
-                      lr_scheduling='Constant',
-                      mixed_precision=mixed_precision,
-                      cache_rate=cache_rate,
-                      save_nifti=save_nifti,
-                      gpu_ids=gpu_ids)
-
-                print('training finished')
-
-                for file in current_output.iterdir():
-                    if file.match('*.ckpt'):
-                        print('start prediction')
-                        predict(model_file=file,
-                                output_dir=current_output,
-                                test_images=image_test,
-                                test_labels=label_test,
-                                tissue_dict=tissue_dict,
-                                layers=test_layers[scenario],
-                                strides=test_strides[scenario],
-                                save_nifti=save_nifti,
-                                gpu_ids=gpu_ids)
-    else:
-        print('evaluating')
-        model_scores = []
-        model_general_scores = []
-        column_names = []
-        for model in Path(output_dir).iterdir():
-            if model.is_dir():
-                print(model.name)
-                column_names.append(model.name)
-                temp_fold_mean = []
-                temp_fold_general_mean = []
-                for fold in model.iterdir():
-                    print(fold.name)
-                    all_scores_fold = []
-                    all_scores_general_fold = []
-                    for file in fold.iterdir():
-                        if file.suffix == '.txt' and 'generalize' not in str(file):
-                            temp_data = np.genfromtxt(file, delimiter=',')
-                            temp_mean_model = np.mean(temp_data)
-                            all_scores_fold.append(temp_mean_model)
-                        elif file.suffix == '.txt' and 'generalize' in str(file):
-                            temp_data = np.genfromtxt(file, delimiter=',')
-                            temp_mean_model = np.mean(temp_data)
-                            all_scores_general_fold.append(temp_mean_model)
-                    temp_fold_mean.append(np.mean(all_scores_fold))
-                    temp_fold_general_mean.append(np.mean(all_scores_general_fold))
-                model_scores.append(temp_fold_mean)
-                model_general_scores.append(temp_fold_general_mean)
-            else:
+            current_output = output_dir_scenario.joinpath(str(test_idx))
+            print(current_output)
+            if current_output.exists():
                 continue
-
-        model_scores_np = np.asarray(model_scores)
-        model_general_scores_np = np.asarray(model_general_scores)
-        print(column_names)
-        print(model_scores_np)
-        print(model_general_scores_np)
-
-        # column_names = ['4_layers', '5_layers', '6_layers']
-        model_scores_df = pd.DataFrame(data=model_scores_np.transpose(),
-                                       columns=column_names)
-        model_scores_df.plot(kind='box')
-
-        print(model_scores_df)
-        plt.show()
-
-        model_scores_df = pd.DataFrame(data=model_general_scores_np.transpose(),
-                                       columns=column_names)
-        model_scores_df.plot(kind='box')
-
-        print(model_scores_df)
-        plt.show()
-        assert False
-        generalize_test_img_path = Path(
-            "M:/DATA/ITIS/MasterThesis/Datasets/T1_T2/T1_T2_spacing_(1, 1, 1)/Hummel_Nibabel")
-        generalize_test_label_path = Path("M:/DATA/ITIS/MasterThesis/Labels/SimNIBS/cat_12/no_ventricles/Hummel")
-
-        generalize_img = []
-        generalize_label = []
-
-        for file in generalize_test_img_path.iterdir():
-            generalize_img.append(file)
-        for file in generalize_test_label_path.iterdir():
-            generalize_label.append(file)
-
-        print(generalize_img)
-        print(generalize_label)
-
-        test_layers = [(16, 32, 64, 128, 256)]
-        test_strides = [(2, 2, 2, 2)]
-
-        for folder in Path(output_dir).iterdir():
-            if folder.is_dir():
-                for fold in folder.iterdir():
-                    for file in fold.iterdir():
-                        if file.match('*.ckpt'):
-                            print('start prediction')
-                            predict(model_file=file,
-                                    output_dir=fold,
-                                    test_images=generalize_img,
-                                    test_labels=generalize_label,
-                                    tissue_dict=tissue_dict,
-                                    layers=test_layers[0],
-                                    strides=test_strides[0],
-                                    save_nifti=save_nifti,
-                                    gpu_ids=gpu_ids)
             else:
-                continue
+                current_output.mkdir()
+
+            # Delete all files from the temporary file dirs
+            for folder in all_paths:
+                if folder.match('images') or folder.match('labels'):
+                    for file in folder.iterdir():
+                        file.unlink()
+
+            # set new splits
+            image_train = [image_files[index] for index in train_idx]
+            image_test = [image_files[index] for index in test_idx]
+            label_train = [label_files[index] for index in train_idx]
+            label_test = [label_files[index] for index in test_idx]
+
+            for file in image_train:
+                shutil.copyfile(file, cv_split_train_img.joinpath(file.name))
+            for file in image_test:
+                shutil.copyfile(file, cv_split_predict_img.joinpath(file.name))
+            for file in label_train:
+                shutil.copyfile(file, cv_split_train_lbl.joinpath(file.name))
+            for file in label_test:
+                shutil.copyfile(file, cv_split_predict_lbl.joinpath(file.name))
+            print('start training')
+
+            result = sp.run([sys.executable,
+                             "F:/Melanie/ETH/11.Semester/MasterThesis/Python/src/segmantic/scripts/run_monai_unet.py",
+                             "train-config",
+                             "-c",
+                             config_file])
+
+            print('training finished')
+
+            for file in current_output.iterdir():
+                if file.match('*.ckpt'):
+                    print('start prediction')
+                    predict(model_file=file,
+                            output_dir=current_output,
+                            test_images=image_test,
+                            test_labels=label_test,
+                            tissue_dict=tissue_dict,
+                            layers=current_layers,
+                            strides=current_strides,
+                            save_nifti=save_nifti,
+                            gpu_ids=gpu_ids)
 
 
 def evolution(
@@ -981,7 +881,7 @@ def evolution(
 
     for generation in range(number_of_generations):
         offspring_population = []
-        current_generation_dir = generation_0_dir.with_name(str(generation+1))
+        current_generation_dir = generation_0_dir.with_name(str(generation + 1))
         current_generation_dir.mkdir(exist_ok=True)
 
         while len(offspring_population) < population_size:
