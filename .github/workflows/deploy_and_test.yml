@@ -45,6 +45,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip
       - name: Pip install
+        if: matrix.python-version == '3.7'
+        run: pip install -e segmantic_src
+      - name: Pip install [test]
+        if: matrix.python-version != '3.7'
         run: pip install -e segmantic_src[test]
       - name: Test
         working-directory: segmantic_src

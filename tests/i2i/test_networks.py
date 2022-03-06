@@ -3,7 +3,13 @@ import numpy as np
 import random
 import torch
 from torchinfo import summary
-import torcheck
+
+try:  # not available for Python 3.7
+    import torcheck
+
+    HAVE_TORCHECK = True
+except:
+    HAVE_TORCHECK = False
 
 from segmantic.i2i.networks import (
     Pad,
@@ -62,7 +68,6 @@ def test_ResnetGenerator():
         use_dropout=False,
         n_blocks=6,
     )
-
     # summary(net2d, input_size=(1, 1, 224, 224))
 
     gen = define_G(
@@ -93,7 +98,6 @@ def test_ResnetGenerator():
         use_dropout=False,
         n_blocks=6,
     )
-
     summary(net3d, input_size=(1, 1, 16, 96, 96))
 
 
@@ -118,7 +122,7 @@ def test_PatchGAN():
     print(output.shape)
 
 
-def test_PatchGAN_Optimize():
+def test_PatchGAN_optimize():
     spatial_dims = 3
     norm_layer = get_norm_layer(spatial_dims, "instance")
     net = NLayerDiscriminator(
@@ -138,10 +142,11 @@ def test_PatchGAN_Optimize():
 
     optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
 
-    torcheck.register(optimizer)
-    torcheck.add_module(
-        net, module_name="PatchGAN3d", changing=True, check_inf=True, check_nan=True
-    )
+    if HAVE_TORCHECK:
+        torcheck.register(optimizer)
+        torcheck.add_module(
+            net, module_name="PatchGAN3d", changing=True, check_inf=True, check_nan=True
+        )
 
     for _ in range(10):
         for batch, c in data.items():
@@ -157,4 +162,4 @@ def test_PatchGAN_Optimize():
 
 
 if __name__ == "__main__":
-    test_PatchGAN_Optimize()
+    test_PatchGAN_optimize()
