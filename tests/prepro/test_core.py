@@ -2,7 +2,7 @@ import itk
 import numpy as np
 
 from segmantic.prepro import core
-from tests.fixture import make_image
+from segmantic.prepro.core import make_image
 
 
 def test_extract_slices(labelfield: core.Image3) -> None:
