@@ -28,11 +28,11 @@ repos:
       - id: black
         name: Format code
 
-  - repo: https://github.com/PyCQA/isort
-    rev: 5.10.1
-    hooks:
-      - id: isort
-        name: Format imports
+  #- repo: https://github.com/PyCQA/isort
+  #  rev: 5.10.1
+  #  hooks:
+  #    - id: isort
+  #      name: Format imports
 
   - repo: https://github.com/executablebooks/mdformat
     rev: 0.7.8

@@ -1,15 +1,13 @@
-import torch
-import torch.nn as nn
+import itertools
+
 import pytorch_lightning as pl
+import torch
 
-from collections import OrderedDict
-
-from .networks import ResnetGenerator, NLayerDiscriminator
-from .networks import get_norm_layer, GANLoss
+from .networks import GANLoss, NLayerDiscriminator, ResnetGenerator, get_norm_layer
 from .util.image_pool import ImagePool
 
 
-def make_generator(spatial_dims: int, norm_type: str, n_blocks: int):
+def make_generator(spatial_dims: int, norm_type: str, n_blocks: int) -> ResnetGenerator:
     norm_layer = get_norm_layer(spatial_dims, norm_type)
     return ResnetGenerator(
         spatial_dims,
@@ -22,29 +20,80 @@ def make_generator(spatial_dims: int, norm_type: str, n_blocks: int):
     )
 
 
-def make_discriminator(spatial_dims: int, norm_type: str):
+def make_discriminator(spatial_dims: int, norm_type: str) -> NLayerDiscriminator:
     norm_layer = get_norm_layer(spatial_dims, norm_type)
     return NLayerDiscriminator(
         spatial_dims=spatial_dims, input_nc=1, ndf=64, n_layers=3, norm_layer=norm_layer
     )
 
 
-# TODO: check also: https://pytorch-lightning.readthedocs.io/en/stable/notebooks/lightning_examples/basic-gan.html
-class GAN(pl.LightningModule):
+class CycleGANModel(pl.LightningModule):
+    """
+    This class implements the CycleGAN model, for learning image-to-image translation without paired data.
+
+    The model training requires '--dataset_mode unaligned' dataset.
+    By default, it uses a '--netG resnet_9blocks' ResNet generator,
+    a '--netD basic' discriminator (PatchGAN introduced by pix2pix),
+    and a least-square GANs objective ('--gan_mode lsgan').
+
+    CycleGAN paper: https://arxiv.org/pdf/1703.10593.pdf
+    """
+
     def __init__(
         self,
-        spatial_dims: int,
+        lambda_A: float,
+        lambda_B: float,
+        lambda_identity: float,
+        lr: float,
+        beta1: float,
     ):
-        super(GAN, self).__init__()
-        self.save_hyperparameters()
+        """Initialize the CycleGAN class.
 
-        # networks
-        self.G_AtoB = make_generator(
-            spatial_dims, norm_type="instance", n_blocks=6  # TODO: check defaults
-        )
-        self.G_BtoA = make_generator(spatial_dims, norm_type="instance", n_blocks=6)
-        self.D_A = make_discriminator(spatial_dims, norm_type="instance")
-        self.D_B = make_discriminator(spatial_dims, norm_type="instance")
+        Parameters:
+            opt (Option class)-- stores all the experiment flags; needs to be a subclass of BaseOptions
+        """
+        super(CycleGANModel, self).__init__()
+        self.lambda_A = lambda_A
+        self.lambda_B = lambda_B
+        self.lambda_identity = lambda_identity
+
+        # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
+        self.loss_names = [
+            "D_A",
+            "G_A",
+            "cycle_A",
+            "idt_A",
+            "D_B",
+            "G_B",
+            "cycle_B",
+            "idt_B",
+        ]
+        # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
+        visual_names_A = ["real_A", "fake_B", "rec_A"]
+        visual_names_B = ["real_B", "fake_A", "rec_B"]
+        if (
+            lambda_identity > 0.0
+        ):  # if identity loss is used, we also visualize idt_B=G_A(B) ad idt_A=G_A(B)
+            visual_names_A.append("idt_B")
+            visual_names_B.append("idt_A")
+
+        self.visual_names = (
+            visual_names_A + visual_names_B
+        )  # combine visualizations for A and B
+        # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>.
+        self.model_names = ["G_A", "G_B", "D_A", "D_B"]
+
+        # define networks (both Generators and discriminators)
+        # The naming is different from those used in the paper.
+        # Code (vs. paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
+        self.netG_A = make_generator(spatial_dims=2, norm_type="instance", n_blocks=6)
+        self.netG_B = make_generator(spatial_dims=2, norm_type="instance", n_blocks=6)
+
+        self.netD_A = make_discriminator(spatial_dims=2, norm_type="instance")
+        self.netD_B = make_discriminator(spatial_dims=2, norm_type="instance")
+
+        # if (lambda_identity > 0.0):  # only works when input and output images have the same number of channels
+        #    assert opt.input_nc == opt.output_nc
 
         # create image buffer to store previously generated images
         self.fake_A_pool = ImagePool(50)
@@ -55,214 +104,139 @@ class GAN(pl.LightningModule):
         self.criterionCycle = torch.nn.L1Loss()
         self.criterionIdt = torch.nn.L1Loss()
 
-    def forward(self, xa, xb):
-        # TODO: missing cycle rec_A, and rec_B
-        return self.G_BtoA(xb), self.G_AtoB(xa)
+        # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
+        self.optimizer_G = torch.optim.Adam(
+            itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()),
+            lr=lr,
+            betas=(beta1, 0.999),
+        )
+        self.optimizer_D = torch.optim.Adam(
+            itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),
+            lr=lr,
+            betas=(beta1, 0.999),
+        )
+        # self.optimizers = [self.optimizer_G, self.optimizer_D]
 
-    def training_step(self, batch, batch_idx, optimizer_idx):
-        real_A, real_B = batch
+        # self.schedulers = [networks.get_scheduler(optimizer, opt) for optimizer in self.optimizers]
 
-        # train generator
-        if optimizer_idx == 0:
+    def set_input(self, input):
+        """Unpack input data from the dataloader and perform necessary pre-processing steps.
 
-            # generate images
-            fake_A, fake_B = self(real_A, real_B)
+        Parameters:
+            input (dict): include the data itself and its metadata information.
 
-            # adversarial loss is binary cross-entropy
-            g_loss = self.adversarial_loss(self.discriminator(self(z)), valid)
-            tqdm_dict = {"g_loss": g_loss}
-            output = OrderedDict(
-                {"loss": g_loss, "progress_bar": tqdm_dict, "log": tqdm_dict}
+        The option 'direction' can be used to swap domain A and domain B.
+        """
+        self.real_A = input["A"].to(self.device)
+        self.real_B = input["B"].to(self.device)
+        # self.image_paths = input["A_paths"]
+
+    def forward(self):
+        """Run forward pass; called by both functions <optimize_parameters> and <test>."""
+        self.fake_B = self.netG_A(self.real_A)  # G_A(A)
+        self.rec_A = self.netG_B(self.fake_B)  # G_B(G_A(A))
+        self.fake_A = self.netG_B(self.real_B)  # G_B(B)
+        self.rec_B = self.netG_A(self.fake_A)  # G_A(G_B(B))
+
+    def backward_D_basic(self, netD, real, fake):
+        """Calculate GAN loss for the discriminator
+
+        Parameters:
+            netD (network)      -- the discriminator D
+            real (tensor array) -- real images
+            fake (tensor array) -- images generated by a generator
+
+        Return the discriminator loss.
+        We also call loss_D.backward() to calculate the gradients.
+        """
+        # Real
+        pred_real = netD(real)
+        loss_D_real = self.criterionGAN(pred_real, True)
+        # Fake
+        pred_fake = netD(fake.detach())
+        loss_D_fake = self.criterionGAN(pred_fake, False)
+        # Combined loss and calculate gradients
+        loss_D = (loss_D_real + loss_D_fake) * 0.5
+        loss_D.backward()
+        return loss_D
+
+    def backward_D_A(self):
+        """Calculate GAN loss for discriminator D_A"""
+        fake_B = self.fake_B_pool.query(self.fake_B)
+        self.loss_D_A = self.backward_D_basic(self.netD_A, self.real_B, fake_B)
+
+    def backward_D_B(self):
+        """Calculate GAN loss for discriminator D_B"""
+        fake_A = self.fake_A_pool.query(self.fake_A)
+        self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A, fake_A)
+
+    def backward_G(self):
+        """Calculate the loss for generators G_A and G_B"""
+        lambda_idt = self.lambda_identity
+        lambda_A = self.lambda_A
+        lambda_B = self.lambda_B
+        # Identity loss
+        if lambda_idt > 0:
+            # G_A should be identity if real_B is fed: ||G_A(B) - B||
+            self.idt_A = self.netG_A(self.real_B)
+            self.loss_idt_A = (
+                self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             )
-            return output
-
-        # train discriminator
-        if optimizer_idx == 1:
-            # Measure discriminator's ability to classify real from generated samples
-
-            # discriminator loss is the average of these
-            d_loss = (real_loss + fake_loss) / 2
-            tqdm_dict = {"d_loss": d_loss}
-            output = OrderedDict(
-                {"loss": d_loss, "progress_bar": tqdm_dict, "log": tqdm_dict}
+            # G_B should be identity if real_A is fed: ||G_B(A) - A||
+            self.idt_B = self.netG_B(self.real_A)
+            self.loss_idt_B = (
+                self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
             )
-            return output
+        else:
+            self.loss_idt_A = 0
+            self.loss_idt_B = 0
 
-    def configure_optimizers(self):
-        lr = self.hparams.lr
-        b1 = self.hparams.b1
-        b2 = self.hparams.b2
-
-        opt_g = torch.optim.Adam(self.generator.parameters(), lr=lr, betas=(b1, b2))
-        opt_d = torch.optim.Adam(self.discriminator.parameters(), lr=lr, betas=(b1, b2))
-        return [opt_g, opt_d], []
-
-    def on_epoch_end(self):
-        # log sampled images
-        pass
-
-
-# https://www.kaggle.com/bootiu/cyclegan-pytorch-lightning
-
-
-class CycleGAN_LightningSystem(pl.LightningModule):
-    def __init__(self, spatial_dims, lr, transform, reconstr_w=10, id_w=2):
-        super(CycleGAN_LightningSystem, self).__init__()
-        self.G_basestyle = make_generator(
-            spatial_dims, norm_type="instance", n_blocks=6  # TODO: check defaults
+        # GAN loss D_A(G_A(A))
+        self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True)
+        # GAN loss D_B(G_B(B))
+        self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
+        # Forward cycle loss || G_B(G_A(A)) - A||
+        self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
+        # Backward cycle loss || G_A(G_B(B)) - B||
+        self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
+        # combined loss and calculate gradients
+        self.loss_G = (
+            self.loss_G_A
+            + self.loss_G_B
+            + self.loss_cycle_A
+            + self.loss_cycle_B
+            + self.loss_idt_A
+            + self.loss_idt_B
         )
-        self.G_stylebase = make_generator(
-            spatial_dims, norm_type="instance", n_blocks=6
-        )
-        self.D_base = make_discriminator(spatial_dims, norm_type="instance")
-        self.D_style = make_discriminator(spatial_dims, norm_type="instance")
-        self.lr = lr
-        self.transform = transform
-        self.reconstr_w = reconstr_w
-        self.id_w = id_w
-        self.cnt_train_step = 0
-        self.step = 0
+        self.loss_G.backward()
 
-        self.mae = nn.L1Loss()
-        self.generator_loss = nn.MSELoss()
-        self.discriminator_loss = nn.MSELoss()
-        self.losses = []
-        self.G_mean_losses = []
-        self.D_mean_losses = []
-        self.validity = []
-        self.reconstr = []
-        self.identity = []
+    def set_requires_grad(self, nets, requires_grad=False):
+        """Set requies_grad=Fasle for all the networks to avoid unnecessary computations
+        Parameters:
+            nets (network list)   -- a list of networks
+            requires_grad (bool)  -- whether the networks require gradients or not
+        """
+        if not isinstance(nets, list):
+            nets = [nets]
+        for net in nets:
+            if net is not None:
+                for param in net.parameters():
+                    param.requires_grad = requires_grad
 
-    def configure_optimizers(self):
-        self.g_basestyle_optimizer = torch.optim.Adam(
-            self.G_basestyle.parameters(), lr=self.lr["G"], betas=(0.5, 0.999)
-        )
-        self.g_stylebase_optimizer = torch.optim.Adam(
-            self.G_stylebase.parameters(), lr=self.lr["G"], betas=(0.5, 0.999)
-        )
-        self.d_base_optimizer = torch.optim.Adam(
-            self.D_base.parameters(), lr=self.lr["D"], betas=(0.5, 0.999)
-        )
-        self.d_style_optimizer = torch.optim.Adam(
-            self.D_style.parameters(), lr=self.lr["D"], betas=(0.5, 0.999)
-        )
-
-        return [
-            self.g_basestyle_optimizer,
-            self.g_stylebase_optimizer,
-            self.d_base_optimizer,
-            self.d_style_optimizer,
-        ], []
-
-    def training_step(self, batch, batch_idx, optimizer_idx):
-        base_img, style_img = batch
-        b = base_img.size()[0]
-
-        valid = torch.ones(b, 1, 30, 30).cuda()
-        fake = torch.zeros(b, 1, 30, 30).cuda()
-
-        # Train Generator
-        if optimizer_idx == 0 or optimizer_idx == 1:
-            # Validity
-            # MSELoss
-            val_base = self.generator_loss(
-                self.D_base(self.G_stylebase(style_img)), valid
-            )
-            val_style = self.generator_loss(
-                self.D_style(self.G_basestyle(base_img)), valid
-            )
-            val_loss = (val_base + val_style) / 2
-
-            # Reconstruction
-            reconstr_base = self.mae(
-                self.G_stylebase(self.G_basestyle(base_img)), base_img
-            )
-            reconstr_style = self.mae(
-                self.G_basestyle(self.G_stylebase(style_img)), style_img
-            )
-            reconstr_loss = (reconstr_base + reconstr_style) / 2
-
-            # Identity
-            id_base = self.mae(self.G_stylebase(base_img), base_img)
-            id_style = self.mae(self.G_basestyle(style_img), style_img)
-            id_loss = (id_base + id_style) / 2
-
-            # Loss Weight
-            G_loss = val_loss + self.reconstr_w * reconstr_loss + self.id_w * id_loss
-
-            return {
-                "loss": G_loss,
-                "validity": val_loss,
-                "reconstr": reconstr_loss,
-                "identity": id_loss,
-            }
-
-        # Train Discriminator
-        elif optimizer_idx == 2 or optimizer_idx == 3:
-            # MSELoss
-            D_base_gen_loss = self.discriminator_loss(
-                self.D_base(self.G_stylebase(style_img)), fake
-            )
-            D_style_gen_loss = self.discriminator_loss(
-                self.D_style(self.G_basestyle(base_img)), fake
-            )
-            D_base_valid_loss = self.discriminator_loss(self.D_base(base_img), valid)
-            D_style_valid_loss = self.discriminator_loss(self.D_style(style_img), valid)
-
-            D_gen_loss = (D_base_gen_loss + D_style_gen_loss) / 2
-
-            # Loss Weight
-            D_loss = (D_gen_loss + D_base_valid_loss + D_style_valid_loss) / 3
-
-            # Count up
-            self.cnt_train_step += 1
-
-            return {"loss": D_loss}
-
-    def training_epoch_end(self, outputs):
-        self.step += 1
-
-        avg_loss = sum(
-            [
-                torch.stack([x["loss"] for x in outputs[i]]).mean().item() / 4
-                for i in range(4)
-            ]
-        )
-        G_mean_loss = sum(
-            [
-                torch.stack([x["loss"] for x in outputs[i]]).mean().item() / 2
-                for i in [0, 1]
-            ]
-        )
-        D_mean_loss = sum(
-            [
-                torch.stack([x["loss"] for x in outputs[i]]).mean().item() / 2
-                for i in [2, 3]
-            ]
-        )
-        validity = sum(
-            [
-                torch.stack([x["validity"] for x in outputs[i]]).mean().item() / 2
-                for i in [0, 1]
-            ]
-        )
-        reconstr = sum(
-            [
-                torch.stack([x["reconstr"] for x in outputs[i]]).mean().item() / 2
-                for i in [0, 1]
-            ]
-        )
-        identity = sum(
-            [
-                torch.stack([x["identity"] for x in outputs[i]]).mean().item() / 2
-                for i in [0, 1]
-            ]
-        )
-
-        self.losses.append(avg_loss)
-        self.G_mean_losses.append(G_mean_loss)
-        self.D_mean_losses.append(D_mean_loss)
-        self.validity.append(validity)
-        self.reconstr.append(reconstr)
-        self.identity.append(identity)
-        return None
+    def optimize_parameters(self):
+        """Calculate losses, gradients, and update network weights; called in every training iteration"""
+        # forward
+        self.forward()  # compute fake images and reconstruction images.
+        # G_A and G_B
+        self.set_requires_grad(
+            [self.netD_A, self.netD_B], False
+        )  # Ds require no gradients when optimizing Gs
+        self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
+        self.backward_G()  # calculate gradients for G_A and G_B
+        self.optimizer_G.step()  # update G_A and G_B's weights
+        # D_A and D_B
+        self.set_requires_grad([self.netD_A, self.netD_B], True)
+        self.optimizer_D.zero_grad()  # set D_A and D_B's gradients to zero
+        self.backward_D_A()  # calculate gradients for D_A
+        self.backward_D_B()  # calculate gradients for D_B
+        self.optimizer_D.step()  # update D_A and D_B's weights

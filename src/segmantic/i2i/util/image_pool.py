@@ -1,4 +1,5 @@
 import random
+
 import torch
 
 
@@ -18,7 +19,7 @@ class ImagePool:
         self.pool_size = pool_size
         if self.pool_size > 0:  # create an empty pool
             self.num_imgs = 0
-            self.images = []
+            self.images = []  # type: ignore
 
     def query(self, images):
         """Return an image from the pool.
