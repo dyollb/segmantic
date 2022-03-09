@@ -1,12 +1,11 @@
 import itk
 import numpy as np
 
-import pytest
 from segmantic.prepro import core
-from tests.fixture import make_image, labelfield
+from tests.fixture import make_image
 
 
-def test_extract_slices(labelfield: core.Image3):
+def test_extract_slices(labelfield: core.Image3) -> None:
 
     slices_xy = core.extract_slices(labelfield, axis=2)
 
@@ -19,7 +18,7 @@ def test_extract_slices(labelfield: core.Image3):
         assert np.all(slice_view == k)
 
 
-def test_pad_crop_center(labelfield: core.Image3):
+def test_pad_crop_center(labelfield: core.Image3) -> None:
     padded = core.pad(labelfield, target_size=(9, 9, 9))
     cropped = core.crop_center(padded, target_size=(5, 5, 5))
 
@@ -32,7 +31,7 @@ def test_pad_crop_center(labelfield: core.Image3):
     assert size[2] == 1
 
 
-def test_resample():
+def test_resample() -> None:
     image = make_image(shape=(3, 3), spacing=(2.0, 2.0), value=1.0, pixel_type=itk.F)
     image[1, 1] = 0.0
 

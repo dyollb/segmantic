@@ -11,3 +11,4 @@ mypy:           dev, test
 pre-commit:     dev
 torchinfo:      dev, test
 torcheck:       dev, test
+nbqa:           dev, test
