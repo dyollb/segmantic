@@ -58,7 +58,7 @@ current_dir = Path(sys.argv[0] if __name__ == "__main__" else __file__).resolve(
 cuda_version = get_cuda_version()
 
 if cuda_version[0] == 11:
-    install_requirements = read_reqs(current_dir / "requirements" / "cuda_111.txt")
+    install_requirements = read_reqs(current_dir / "requirements" / "cuda_113.txt")
 else:
     install_requirements = read_reqs(current_dir / "requirements" / "generic.txt")
 
