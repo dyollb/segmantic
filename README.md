@@ -8,7 +8,7 @@ Semantic segmentation and image-to-image translation based on AI. This repo coll
 
 ## Installation
 
-Dependencies are listed in `requirements/generic.txt`. It is advisable to install the package in a virtual environment, e.g. using `venv`
+Dependencies for specific versions of CUDA are listed in `requirements/cu113.txt`, `requirements/cu111.txt`, etc.. It is advisable to install the package in a virtual environment, e.g. using `venv`
 ```
 cd /your/working/directory
 python -m venv .venv
