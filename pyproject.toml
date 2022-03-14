@@ -23,29 +23,29 @@ classifiers = [
 ]
 requires-python = ">=3.7"
 dependencies = [
-    "monai",
-    "torch",
-    "torchvision",
-    "pytorch-lightning",
-    "typer",
-    "matplotlib",
     "dominate",
+    "itk>=5.3rc3",
+    "matplotlib",
+    "monai",
+    "pytorch-lightning",
     "scikit-learn",
     "tensorboard",
-    "itk>=5.3rc3"
+    "torch",
+    "torchvision",
+    "typer"
 ]
 
 [project.optional-dependencies]
 test = [
-  "pytest",
   "mypy",
+  "pytest"
 ]
 dev = [
   "black",
   "flake8",
   "isort",
   "mypy",
-  "pre-commit",
+  "pre-commit"
 ]
 
 [project.urls]
