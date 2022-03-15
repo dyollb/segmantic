@@ -25,9 +25,18 @@ jobs:
     runs-on: ${{ matrix.config.os }}
     strategy:
       fail-fast: false
-      max-parallel: 4
       matrix:
         config:
+        - {
+          name: "macos-11 - Python 3.9",
+          os: macos-11,
+          python-version: "3.9"
+          }
+        - {
+          name: "windows-2019 - Python 3.9",
+          os: windows-2019,
+          python-version: "3.9"
+          }
         - {
           name: "ubuntu-20.04 - Python 3.7",
           os: ubuntu-20.04,
@@ -47,21 +56,6 @@ jobs:
           name: "ubuntu-20.04 - Python 3.10",
           os: ubuntu-20.04,
           python-version: "3.10"
-          }
-        - {
-          name: "ubuntu-18.04 - Python 3.9",
-          os: ubuntu-18.04,
-          python-version: "3.9"
-          }
-        - {
-          name: "macos-11 - Python 3.9",
-          os: macos-11,
-          python-version: "3.9"
-          }
-        - {
-          name: "windows-2019 - Python 3.9",
-          os: windows-2019,
-          python-version: "3.9"
           }
 
     steps:
