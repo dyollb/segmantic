@@ -49,8 +49,8 @@ dev = [
 ]
 
 [project.urls]
-Home = "https://github.com/dyollb/segmantic.git"
-Documentation = "https://dyollb.github.io/segmantic/"
+repository = "https://github.com/dyollb/segmantic.git"
+documentation = "https://dyollb.github.io/segmantic/"
 
 [tool.isort]
 profile = "black"
