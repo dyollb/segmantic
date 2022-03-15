@@ -21,38 +21,68 @@ on:
 
 jobs:
   build-and-test:
-      name: python ${{ matrix.python-version }}
-      runs-on: ubuntu-18.04
-      strategy:
-        fail-fast: false
-        max-parallel: 4
-        matrix:
-          python-version: ['3.7', '3.8', '3.9']
-      steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-        with:
-          path: segmantic_src
-      - name: Setup python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Pip cache
-        uses: actions/cache@v2
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-{{ matrix.python-version }}
-          restore-keys: |
-            ${{ runner.os }}-pip
-      - name: Pip install
-        run: pip install -e segmantic_src
-      - name: Test
-        working-directory: segmantic_src
-        run: |
-          pip install pytest
-          pytest tests
-      - name: Static analysis
-        working-directory: segmantic_src
-        run: |
-          pip install mypy
-          mypy .
+    name: ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {
+          name: "macos-11 - Python 3.9",
+          os: macos-11,
+          python-version: "3.9"
+          }
+        - {
+          name: "windows-2019 - Python 3.9",
+          os: windows-2019,
+          python-version: "3.9"
+          }
+        - {
+          name: "ubuntu-20.04 - Python 3.7",
+          os: ubuntu-20.04,
+          python-version: "3.7"
+          }
+        - {
+          name: "ubuntu-20.04 - Python 3.8",
+          os: ubuntu-20.04,
+          python-version: "3.8"
+          }
+        - {
+          name: "ubuntu-20.04 - Python 3.9",
+          os: ubuntu-20.04,
+          python-version: "3.9"
+          }
+        - {
+          name: "ubuntu-20.04 - Python 3.10",
+          os: ubuntu-20.04,
+          python-version: "3.10"
+          }
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        path: segmantic_src
+    - name: Setup python ${{ matrix.config.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.config.python-version }}
+    - name: Pip cache
+      uses: actions/cache@v2
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-{{ matrix.config.python-version }}
+        restore-keys: |
+          ${{ runner.os }}-pip
+    - name: Pip install
+      run: pip install -e segmantic_src
+    - name: Test
+      working-directory: segmantic_src
+      run: |
+        pip install pytest
+        pytest tests
+    - name: Static analysis
+      working-directory: segmantic_src
+      run: |
+        pip install mypy
+        mypy .
