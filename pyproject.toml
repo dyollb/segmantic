@@ -25,12 +25,14 @@ requires-python = ">=3.7"
 dependencies = [
     "dominate",
     "itk>=5.3rc3",
+    "makefun",
     "matplotlib",
     "monai",
     "pytorch-lightning",
     "scikit-learn",
     "tensorboard",
     "torch",
+    "torchinfo",
     "torchvision",
     "typer"
 ]
@@ -45,6 +47,7 @@ dev = [
   "flake8",
   "isort",
   "mypy",
+  "pytest",
   "pre-commit"
 ]
 
