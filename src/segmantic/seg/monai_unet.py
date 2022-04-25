@@ -70,7 +70,11 @@ class Net(pytorch_lightning.LightningModule):
             norm=Norm.BATCH,
         )
         self.dataset = dataset
-        self.spatial_size = spatial_size
+        self.spatial_size = (
+            tuple(96 for _ in range(self.spatial_dims))
+            if spatial_size is None
+            else spatial_size
+        )
         self.loss_function = DiceLoss(to_onehot_y=True, softmax=True)
         self.post_pred = Compose(
             [
@@ -164,14 +168,12 @@ class Net(pytorch_lightning.LightningModule):
                     )
                 )
 
-            if self.spatial_size is None:
-                spatial_size = tuple(96 for _ in range(self.spatial_dims))
             xforms.append(
                 RandCropByLabelClassesd(
                     keys=keys,
                     label_key="label",
                     image_key="image",
-                    spatial_size=spatial_size,
+                    spatial_size=self.spatial_size,
                     num_classes=self.num_classes,
                     num_samples=4,
                     image_threshold=-np.inf,

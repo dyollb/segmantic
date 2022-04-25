@@ -24,9 +24,10 @@ classifiers = [
 requires-python = ">=3.7"
 dependencies = [
     "dominate",
-    "itk>=5.3rc3",
+    "itk",
     "matplotlib",
     "monai",
+    "nibabel",
     "pytorch-lightning",
     "scikit-learn",
     "tensorboard",
