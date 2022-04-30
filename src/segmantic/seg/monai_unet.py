@@ -1,53 +1,54 @@
-from monai.transforms.spatial.dictionary import Spacingd
-from monai.utils import set_determinism
-from monai.transforms import (
-    AsDiscrete,
-    AsDiscreted,
-    AddChanneld,
-    EnsureChannelFirstd,
-    Compose,
-    CropForegroundd,
-    LoadImaged,
-    Orientationd,
-    RandAdjustContrastd,
-    RandHistogramShiftd,
-    RandGibbsNoised,
-    RandKSpaceSpikeNoised,
-    RandCropByLabelClassesd,
-    RandFlipd,
-    RandRotated,
-    RandZoomd,
-    NormalizeIntensityd,
-    EnsureTyped,
-    EnsureType,
-    SaveImaged,
-    Invertd,
-)
-from monai.transforms.transform import Transform
-from monai.networks.nets import UNet
-from monai.networks.layers import Norm
-from monai.metrics import DiceMetric, ConfusionMatrixMetric
-from monai.losses import DiceLoss
-from monai.inferers import sliding_window_inference
-from monai.data import CacheDataset, list_data_collate, decollate_batch, NiftiSaver
-from monai.networks.utils import one_hot
-from monai.config import print_config
+import json
+import os
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence
+
+import matplotlib.pyplot as plt
 import numpy as np
-import torch
-import torch.utils.data
 import pytorch_lightning
 import pytorch_lightning.loggers
+import torch
+import torch.utils.data
+from monai.config import print_config
+from monai.data import CacheDataset, NiftiSaver, decollate_batch, list_data_collate
+from monai.inferers import sliding_window_inference
+from monai.losses import DiceLoss
+from monai.metrics import ConfusionMatrixMetric, DiceMetric
+from monai.networks.layers import Norm
+from monai.networks.nets import UNet
+from monai.networks.utils import one_hot
+from monai.transforms import (
+    AddChanneld,
+    AsDiscrete,
+    AsDiscreted,
+    Compose,
+    CropForegroundd,
+    EnsureChannelFirstd,
+    EnsureType,
+    EnsureTyped,
+    Invertd,
+    LoadImaged,
+    NormalizeIntensityd,
+    Orientationd,
+    RandAdjustContrastd,
+    RandCropByLabelClassesd,
+    RandFlipd,
+    RandGibbsNoised,
+    RandHistogramShiftd,
+    RandKSpaceSpikeNoised,
+    RandRotated,
+    RandZoomd,
+    SaveImaged,
+)
+from monai.transforms.spatial.dictionary import Spacingd
+from monai.transforms.transform import Transform
+from monai.utils import set_determinism
 from pytorch_lightning.callbacks import ModelCheckpoint
-import matplotlib.pyplot as plt
-import os
-import json
-from typing import List, Optional, Dict, Sequence
-from pathlib import Path
 
 from ..prepro.labels import load_tissue_list
+from .dataset import DataSet
 from .evaluation import confusion_matrix
 from .utils import make_device
-from .dataset import DataSet
 from .visualization import make_tissue_cmap, plot_confusion_matrix
 
 
@@ -71,7 +72,11 @@ class Net(pytorch_lightning.LightningModule):
             norm=Norm.BATCH,
         )
         self.dataset = dataset
-        self.spatial_size = spatial_size
+        self.spatial_size = (
+            tuple(96 for _ in range(self.spatial_dims))
+            if spatial_size is None
+            else spatial_size
+        )
         self.loss_function = DiceLoss(to_onehot_y=True, softmax=True)
         self.post_pred = Compose(
             [
@@ -165,14 +170,12 @@ class Net(pytorch_lightning.LightningModule):
                     )
                 )
 
-            if self.spatial_size is None:
-                spatial_size = tuple(96 for _ in range(self.spatial_dims))
             xforms.append(
                 RandCropByLabelClassesd(
                     keys=keys,
                     label_key="label",
                     image_key="image",
-                    spatial_size=spatial_size,
+                    spatial_size=self.spatial_size,
                     num_classes=self.num_classes,
                     num_samples=4,
                     image_threshold=-np.inf,
@@ -501,7 +504,8 @@ def predict(
         metric_name=["sensitivity", "specificity", "precision", "accuracy"]
     )
 
-    to_one_hot = lambda x: one_hot(x, num_classes=num_classes, dim=0)
+    def to_one_hot(x):
+        one_hot(x, num_classes=num_classes, dim=0)
 
     tissue_names = [""] * num_classes
     if tissue_dict:
