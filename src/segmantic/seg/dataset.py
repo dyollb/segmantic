@@ -1,8 +1,8 @@
-from typing import Sequence, Dict
 from pathlib import Path
+from typing import Dict, Sequence
 
 
-class DataSet(object):
+class PairedNiftiDataSet(object):
     def __init__(
         self,
         image_dir: Path = Path(""),
