@@ -46,7 +46,7 @@ from monai.utils import set_determinism
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 from ..prepro.labels import load_tissue_list
-from .dataset import PairedNiftiDataSet
+from .dataset import PairedDataSet
 from .evaluation import confusion_matrix
 from .utils import make_device
 from .visualization import make_tissue_cmap, plot_confusion_matrix
@@ -59,7 +59,7 @@ class Net(pytorch_lightning.LightningModule):
         num_channels: int = 1,
         spatial_dims: int = 3,
         spatial_size: Sequence[int] = None,
-        dataset: Optional[PairedNiftiDataSet] = None,
+        dataset: Optional[PairedDataSet] = None,
     ):
         super().__init__()
         self._model = UNet(
@@ -96,7 +96,7 @@ class Net(pytorch_lightning.LightningModule):
             "num_classes", "num_channels", "spatial_dims", "spatial_size"
         )
 
-    dataset: Optional[PairedNiftiDataSet]
+    dataset: Optional[PairedDataSet]
     cache_rate: float = 1.0
     intensity_augmentation: bool = False
     spatial_augmentation: bool = False
@@ -325,7 +325,7 @@ def train(
             num_classes=num_classes,
             spatial_size=spatial_size,
         )
-    net.dataset = PairedNiftiDataSet(image_dir=image_dir, labels_dir=labels_dir)
+    net.dataset = PairedDataSet(input_dir=image_dir, output_dir=labels_dir)
     net.intensity_augmentation = augment_intensity
     net.spatial_augmentation = augment_spatial
     net.cache_rate = cache_rate

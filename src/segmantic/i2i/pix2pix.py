@@ -2,13 +2,25 @@ from pathlib import Path
 
 import torch
 import torch.nn.functional as F
+from monai.data import CacheDataset
+from monai.transforms import (
+    Compose,
+    CropForegroundd,
+    EnsureChannelFirstd,
+    EnsureTyped,
+    LoadImaged,
+    NormalizeIntensityd,
+    Orientationd,
+)
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from torch import nn
 from torch.utils.data import DataLoader
-from torchmetrics.functional import accuracy, psnr, ssim
+from torchmetrics.functional import accuracy
+from torchmetrics.functional import peak_signal_noise_ratio as psnr
+from torchmetrics.functional import scale_invariant_signal_noise_ratio as ssim
 
-from segmantic.seg.dataset import PairedNiftiDataSet
+from segmantic.seg.dataset import PairedDataSet
 
 from .pix2pix_nets import Generator, PatchGAN
 
@@ -252,17 +264,39 @@ def train(
     # https://www.aryan.no/post/pix2pix/pix2pix/
     # epoch_inference_callback = EpochInference(test_dataloader)
 
-    dataset = PairedNiftiDataSet(image_dir=source_dir, labels_dir=target_dir)
+    keys = ["source", "target"]
+    transforms = Compose(
+        [
+            LoadImaged(keys=keys, reader="itkreader"),
+            EnsureChannelFirstd(keys=keys),
+            Orientationd(keys=keys, axcodes="RAS"),
+            NormalizeIntensityd(keys=keys, nonzero=True, channel_wise=True),
+            CropForegroundd(keys=keys, source_key="source"),
+            EnsureTyped(keys=keys),
+        ]
+    )
 
+    dataset = PairedDataSet(input_dir=source_dir, output_dir=target_dir)
+
+    train_dataset = CacheDataset(
+        data=dataset.training_files(),
+        transform=transforms,
+        cache_rate=1.0,
+    )
     train_dataloader = DataLoader(
-        dataset.training_files(),
+        train_dataset,
         batch_size=train_batch_size,
         num_workers=16,
         shuffle=True,
         drop_last=True,
     )
+    val_dataset = CacheDataset(
+        data=dataset.validation_files(),
+        transform=transforms,
+        cache_rate=1.0,
+    )
     val_dataloader = DataLoader(
-        dataset.validation_files(),
+        val_dataset,
         batch_size=val_batch_size,
         num_workers=8,
         shuffle=False,
