@@ -1,6 +1,7 @@
-from typing import Tuple
-import numpy as np
 import random
+from typing import Tuple
+
+import numpy as np
 import torch
 from torchinfo import summary
 
@@ -8,13 +9,13 @@ try:  # not available for Python 3.7
     import torcheck
 
     HAVE_TORCHECK = True
-except:
+except ImportError:
     HAVE_TORCHECK = False
 
 from segmantic.i2i.networks import (
+    NLayerDiscriminator,
     Pad,
     ResnetGenerator,
-    NLayerDiscriminator,
     get_norm_layer,
 )
 from segmantic.i2i.translate import define_G
@@ -83,9 +84,10 @@ def test_ResnetGenerator():
     )
     # summary(gen, input_size=(1, 1, 224, 224))
 
-    num_params = lambda m: sum([param.nelement() for param in m.parameters()])
+    def count_params(m):
+        return sum([param.nelement() for param in m.parameters()])
 
-    assert num_params(net2d) == num_params(gen)
+    assert count_params(net2d) == count_params(gen)
 
     spatial_dims = 3
     norm_layer = get_norm_layer(spatial_dims, "instance")
@@ -118,6 +120,8 @@ def test_PatchGAN():
     summary(net3d, input_size=(1, 1, 24, 96, 96))
 
     input = torch.empty(1, 1, 24, 96, 96)
+    net3d.to(input.device)
+
     output = net3d(input)
     print(output.shape)
 
@@ -132,9 +136,9 @@ def test_PatchGAN_optimize():
     def striped_image(shape: Tuple[int, ...], vertical: bool) -> torch.Tensor:
         t = torch.zeros(size=shape)
         if vertical:
-            t[:, :, 2 : shape[2] // 2] = 1
+            t[:, :, 2 : shape[2] // 2] = 1  # noqa: E203
         else:
-            t[:, :, :, 2 : shape[3] // 2] = 1
+            t[:, :, :, 2 : shape[3] // 2] = 1  # noqa: E203
         return t
 
     classes = [-1.0 if random.uniform(0, 1) > 0.5 else 1.0]

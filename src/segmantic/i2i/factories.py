@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-if torch.torch_version.TorchVersion >= (1, 10, 0):  # type: ignore
+if torch.__version__ >= (1, 10, 0):  # type: ignore
     from torch.nn.modules.padding import ReflectionPad3d
 else:
     from .backports import ReflectionPad3d  # type: ignore
