@@ -11,6 +11,7 @@ from monai.transforms import (
     LoadImaged,
     NormalizeIntensityd,
     Orientationd,
+    RandWeightedCropd,
 )
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
@@ -272,33 +273,26 @@ def train(
             Orientationd(keys=keys, axcodes="RAS"),
             NormalizeIntensityd(keys=keys, nonzero=True, channel_wise=True),
             CropForegroundd(keys=keys, source_key="source"),
+            RandWeightedCropd(keys=keys, spatial_size=[224, 224]),
             EnsureTyped(keys=keys),
         ]
     )
 
     dataset = PairedDataSet(input_dir=source_dir, output_dir=target_dir)
 
-    train_dataset = CacheDataset(
-        data=dataset.training_files(),
-        transform=transforms,
-        cache_rate=1.0,
-    )
+    train_dataset = CacheDataset(data=dataset.training_files(), transform=transforms)
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=train_batch_size,
-        num_workers=16,
+        num_workers=0,
         shuffle=True,
         drop_last=True,
     )
-    val_dataset = CacheDataset(
-        data=dataset.validation_files(),
-        transform=transforms,
-        cache_rate=1.0,
-    )
+    val_dataset = CacheDataset(data=dataset.validation_files(), transform=transforms)
     val_dataloader = DataLoader(
         val_dataset,
         batch_size=val_batch_size,
-        num_workers=8,
+        num_workers=0,
         shuffle=False,
     )
 
