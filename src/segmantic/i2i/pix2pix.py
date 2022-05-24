@@ -280,17 +280,15 @@ def train(
 
     dataset = PairedDataSet(input_dir=source_dir, output_dir=target_dir)
 
-    train_dataset = CacheDataset(data=dataset.training_files(), transform=transforms)
     train_dataloader = DataLoader(
-        train_dataset,
+        CacheDataset(data=dataset.training_files(), transform=transforms),
         batch_size=train_batch_size,
         num_workers=0,
         shuffle=True,
         drop_last=True,
     )
-    val_dataset = CacheDataset(data=dataset.validation_files(), transform=transforms)
     val_dataloader = DataLoader(
-        val_dataset,
+        CacheDataset(data=dataset.validation_files(), transform=transforms),
         batch_size=val_batch_size,
         num_workers=0,
         shuffle=False,
