@@ -1,11 +1,33 @@
-import torch
 import itertools
-from ..util.image_pool import ImagePool
-from .base_model import BaseModel
-from . import networks
+
+import pytorch_lightning as pl
+import torch
+
+from .networks import GANLoss, NLayerDiscriminator, ResnetGenerator, get_norm_layer
+from .util.image_pool import ImagePool
 
 
-class CycleGANModel(BaseModel):
+def make_generator(spatial_dims: int, norm_type: str, n_blocks: int) -> ResnetGenerator:
+    norm_layer = get_norm_layer(spatial_dims, norm_type)
+    return ResnetGenerator(
+        spatial_dims,
+        input_nc=1,
+        output_nc=1,
+        ngf=64,
+        norm_layer=norm_layer,
+        use_dropout=False,
+        n_blocks=n_blocks,
+    )
+
+
+def make_discriminator(spatial_dims: int, norm_type: str) -> NLayerDiscriminator:
+    norm_layer = get_norm_layer(spatial_dims, norm_type)
+    return NLayerDiscriminator(
+        spatial_dims=spatial_dims, input_nc=1, ndf=64, n_layers=3, norm_layer=norm_layer
+    )
+
+
+class CycleGANModel(pl.LightningModule):
     """
     This class implements the CycleGAN model, for learning image-to-image translation without paired data.
 
@@ -17,56 +39,24 @@ class CycleGANModel(BaseModel):
     CycleGAN paper: https://arxiv.org/pdf/1703.10593.pdf
     """
 
-    @staticmethod
-    def modify_commandline_options(parser, is_train=True):
-        """Add new dataset-specific options, and rewrite default values for existing options.
-
-        Parameters:
-            parser          -- original option parser
-            is_train (bool) -- whether training phase or test phase. You can use this flag to add training-specific or test-specific options.
-
-        Returns:
-            the modified parser.
-
-        For CycleGAN, in addition to GAN losses, we introduce lambda_A, lambda_B, and lambda_identity for the following losses.
-        A (source domain), B (target domain).
-        Generators: G_A: A -> B; G_B: B -> A.
-        Discriminators: D_A: G_A(A) vs. B; D_B: G_B(B) vs. A.
-        Forward cycle loss:  lambda_A * ||G_B(G_A(A)) - A|| (Eqn. (2) in the paper)
-        Backward cycle loss: lambda_B * ||G_A(G_B(B)) - B|| (Eqn. (2) in the paper)
-        Identity loss (optional): lambda_identity * (||G_A(B) - B|| * lambda_B + ||G_B(A) - A|| * lambda_A) (Sec 5.2 "Photo generation from paintings" in the paper)
-        Dropout is not used in the original CycleGAN paper.
-        """
-        parser.set_defaults(no_dropout=True)  # default CycleGAN did not use dropout
-        if is_train:
-            parser.add_argument(
-                "--lambda_A",
-                type=float,
-                default=10.0,
-                help="weight for cycle loss (A -> B -> A)",
-            )
-            parser.add_argument(
-                "--lambda_B",
-                type=float,
-                default=10.0,
-                help="weight for cycle loss (B -> A -> B)",
-            )
-            parser.add_argument(
-                "--lambda_identity",
-                type=float,
-                default=0.5,
-                help="use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1",
-            )
-
-        return parser
-
-    def __init__(self, opt):
+    def __init__(
+        self,
+        lambda_A: float,
+        lambda_B: float,
+        lambda_identity: float,
+        lr: float,
+        beta1: float,
+    ):
         """Initialize the CycleGAN class.
 
         Parameters:
             opt (Option class)-- stores all the experiment flags; needs to be a subclass of BaseOptions
         """
-        BaseModel.__init__(self, opt)
+        super(CycleGANModel, self).__init__()
+        self.lambda_A = lambda_A
+        self.lambda_B = lambda_B
+        self.lambda_identity = lambda_identity
+
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = [
             "D_A",
@@ -82,7 +72,7 @@ class CycleGANModel(BaseModel):
         visual_names_A = ["real_A", "fake_B", "rec_A"]
         visual_names_B = ["real_B", "fake_A", "rec_B"]
         if (
-            self.isTrain and self.opt.lambda_identity > 0.0
+            lambda_identity > 0.0
         ):  # if identity loss is used, we also visualize idt_B=G_A(B) ad idt_A=G_A(B)
             visual_names_A.append("idt_B")
             visual_names_B.append("idt_A")
@@ -91,89 +81,43 @@ class CycleGANModel(BaseModel):
             visual_names_A + visual_names_B
         )  # combine visualizations for A and B
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>.
-        if self.isTrain:
-            self.model_names = ["G_A", "G_B", "D_A", "D_B"]
-        else:  # during test time, only load Gs
-            self.model_names = ["G_A", "G_B"]
+        self.model_names = ["G_A", "G_B", "D_A", "D_B"]
 
         # define networks (both Generators and discriminators)
         # The naming is different from those used in the paper.
         # Code (vs. paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
-        self.netG_A = networks.define_G(
-            opt.input_nc,
-            opt.output_nc,
-            opt.ngf,
-            opt.netG,
-            opt.norm,
-            not opt.no_dropout,
-            opt.init_type,
-            opt.init_gain,
-            self.gpu_ids,
-        )
-        self.netG_B = networks.define_G(
-            opt.output_nc,
-            opt.input_nc,
-            opt.ngf,
-            opt.netG,
-            opt.norm,
-            not opt.no_dropout,
-            opt.init_type,
-            opt.init_gain,
-            self.gpu_ids,
-        )
+        self.netG_A = make_generator(spatial_dims=2, norm_type="instance", n_blocks=6)
+        self.netG_B = make_generator(spatial_dims=2, norm_type="instance", n_blocks=6)
 
-        if self.isTrain:  # define discriminators
-            self.netD_A = networks.define_D(
-                opt.output_nc,
-                opt.ndf,
-                opt.netD,
-                opt.n_layers_D,
-                opt.norm,
-                opt.init_type,
-                opt.init_gain,
-                self.gpu_ids,
-            )
-            self.netD_B = networks.define_D(
-                opt.input_nc,
-                opt.ndf,
-                opt.netD,
-                opt.n_layers_D,
-                opt.norm,
-                opt.init_type,
-                opt.init_gain,
-                self.gpu_ids,
-            )
+        self.netD_A = make_discriminator(spatial_dims=2, norm_type="instance")
+        self.netD_B = make_discriminator(spatial_dims=2, norm_type="instance")
 
-        if self.isTrain:
-            if (
-                opt.lambda_identity > 0.0
-            ):  # only works when input and output images have the same number of channels
-                assert opt.input_nc == opt.output_nc
-            self.fake_A_pool = ImagePool(
-                opt.pool_size
-            )  # create image buffer to store previously generated images
-            self.fake_B_pool = ImagePool(
-                opt.pool_size
-            )  # create image buffer to store previously generated images
-            # define loss functions
-            self.criterionGAN = networks.GANLoss(opt.gan_mode).to(
-                self.device
-            )  # define GAN loss.
-            self.criterionCycle = torch.nn.L1Loss()
-            self.criterionIdt = torch.nn.L1Loss()
-            # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
-            self.optimizer_G = torch.optim.Adam(
-                itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()),
-                lr=opt.lr,
-                betas=(opt.beta1, 0.999),
-            )
-            self.optimizer_D = torch.optim.Adam(
-                itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),
-                lr=opt.lr,
-                betas=(opt.beta1, 0.999),
-            )
-            self.optimizers.append(self.optimizer_G)
-            self.optimizers.append(self.optimizer_D)
+        # if (lambda_identity > 0.0):  # only works when input and output images have the same number of channels
+        #    assert opt.input_nc == opt.output_nc
+
+        # create image buffer to store previously generated images
+        self.fake_A_pool = ImagePool(50)
+        self.fake_B_pool = ImagePool(50)
+
+        # define loss functions
+        self.criterionGAN = GANLoss("lsgan").to(self.device)
+        self.criterionCycle = torch.nn.L1Loss()
+        self.criterionIdt = torch.nn.L1Loss()
+
+        # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
+        self.optimizer_G = torch.optim.Adam(
+            itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()),
+            lr=lr,
+            betas=(beta1, 0.999),
+        )
+        self.optimizer_D = torch.optim.Adam(
+            itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),
+            lr=lr,
+            betas=(beta1, 0.999),
+        )
+        # self.optimizers = [self.optimizer_G, self.optimizer_D]
+
+        # self.schedulers = [networks.get_scheduler(optimizer, opt) for optimizer in self.optimizers]
 
     def set_input(self, input):
         """Unpack input data from the dataloader and perform necessary pre-processing steps.
@@ -183,10 +127,9 @@ class CycleGANModel(BaseModel):
 
         The option 'direction' can be used to swap domain A and domain B.
         """
-        AtoB = self.opt.direction == "AtoB"
-        self.real_A = input["A" if AtoB else "B"].to(self.device)
-        self.real_B = input["B" if AtoB else "A"].to(self.device)
-        self.image_paths = input["A_paths" if AtoB else "B_paths"]
+        self.real_A = input["A"].to(self.device)
+        self.real_B = input["B"].to(self.device)
+        # self.image_paths = input["A_paths"]
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
@@ -229,9 +172,9 @@ class CycleGANModel(BaseModel):
 
     def backward_G(self):
         """Calculate the loss for generators G_A and G_B"""
-        lambda_idt = self.opt.lambda_identity
-        lambda_A = self.opt.lambda_A
-        lambda_B = self.opt.lambda_B
+        lambda_idt = self.lambda_identity
+        lambda_A = self.lambda_A
+        lambda_B = self.lambda_B
         # Identity loss
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed: ||G_A(B) - B||
@@ -266,6 +209,19 @@ class CycleGANModel(BaseModel):
             + self.loss_idt_B
         )
         self.loss_G.backward()
+
+    def set_requires_grad(self, nets, requires_grad=False):
+        """Set requies_grad=Fasle for all the networks to avoid unnecessary computations
+        Parameters:
+            nets (network list)   -- a list of networks
+            requires_grad (bool)  -- whether the networks require gradients or not
+        """
+        if not isinstance(nets, list):
+            nets = [nets]
+        for net in nets:
+            if net is not None:
+                for param in net.parameters():
+                    param.requires_grad = requires_grad
 
     def optimize_parameters(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""

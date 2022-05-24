@@ -1,52 +1,54 @@
-from monai.transforms.spatial.dictionary import Spacingd
-from monai.utils import set_determinism
-from monai.transforms import (
-    AsDiscrete,
-    AsDiscreted,
-    AddChanneld,
-    EnsureChannelFirstd,
-    Compose,
-    CropForegroundd,
-    LoadImaged,
-    Orientationd,
-    RandAdjustContrastd,
-    RandHistogramShiftd,
-    RandGibbsNoised,
-    RandKSpaceSpikeNoised,
-    RandCropByLabelClassesd,
-    RandFlipd,
-    RandRotated,
-    RandZoomd,
-    NormalizeIntensityd,
-    EnsureTyped,
-    EnsureType,
-    SaveImaged,
-    Invertd,
-)
-from monai.networks.nets import UNet
-from monai.networks.layers import Norm
-from monai.metrics import DiceMetric, ConfusionMatrixMetric
-from monai.losses import DiceLoss
-from monai.inferers import sliding_window_inference
-from monai.data import CacheDataset, list_data_collate, decollate_batch, NiftiSaver
-from monai.networks.utils import one_hot
-from monai.config import print_config
+import json
+import os
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence
+
+import matplotlib.pyplot as plt
 import numpy as np
-import torch
-import torch.utils.data
 import pytorch_lightning
 import pytorch_lightning.loggers
+import torch
+import torch.utils.data
+from monai.config import print_config
+from monai.data import CacheDataset, NiftiSaver, decollate_batch, list_data_collate
+from monai.inferers import sliding_window_inference
+from monai.losses import DiceLoss
+from monai.metrics import ConfusionMatrixMetric, DiceMetric
+from monai.networks.layers import Norm
+from monai.networks.nets import UNet
+from monai.networks.utils import one_hot
+from monai.transforms import (
+    AddChanneld,
+    AsDiscrete,
+    AsDiscreted,
+    Compose,
+    CropForegroundd,
+    EnsureChannelFirstd,
+    EnsureType,
+    EnsureTyped,
+    Invertd,
+    LoadImaged,
+    NormalizeIntensityd,
+    Orientationd,
+    RandAdjustContrastd,
+    RandCropByLabelClassesd,
+    RandFlipd,
+    RandGibbsNoised,
+    RandHistogramShiftd,
+    RandKSpaceSpikeNoised,
+    RandRotated,
+    RandZoomd,
+    SaveImaged,
+)
+from monai.transforms.spatial.dictionary import Spacingd
+from monai.transforms.transform import Transform
+from monai.utils import set_determinism
 from pytorch_lightning.callbacks import ModelCheckpoint
-import matplotlib.pyplot as plt
-import os
-import json
-from typing import List, Optional, Dict, Sequence
-from pathlib import Path
 
 from ..prepro.labels import load_tissue_list
+from .dataset import PairedDataSet
 from .evaluation import confusion_matrix
 from .utils import make_device
-from .dataset import DataSet
 from .visualization import make_tissue_cmap, plot_confusion_matrix
 
 
@@ -57,7 +59,7 @@ class Net(pytorch_lightning.LightningModule):
         num_channels: int = 1,
         spatial_dims: int = 3,
         spatial_size: Sequence[int] = None,
-        dataset: Optional[DataSet] = None,
+        dataset: Optional[PairedDataSet] = None,
     ):
         super().__init__()
         self._model = UNet(
@@ -94,7 +96,7 @@ class Net(pytorch_lightning.LightningModule):
             "num_classes", "num_channels", "spatial_dims", "spatial_size"
         )
 
-    dataset: Optional[DataSet]
+    dataset: Optional[PairedDataSet]
     cache_rate: float = 1.0
     intensity_augmentation: bool = False
     spatial_augmentation: bool = False
@@ -112,7 +114,7 @@ class Net(pytorch_lightning.LightningModule):
         keys: List[str],
         train: bool = False,
         spacing: Sequence[float] = None,
-    ):
+    ) -> Transform:
         # loading and normalization
         xforms = [
             LoadImaged(keys=keys, reader="itkreader"),
@@ -297,7 +299,8 @@ def train(
     cache_rate: float = 1.0,
     save_nifti: bool = True,
     gpu_ids: List[int] = [0],
-):
+) -> pytorch_lightning.LightningModule:
+
     print_config()
 
     output_dir = Path(output_dir)
@@ -317,12 +320,12 @@ def train(
         net = Net.load_from_checkpoint(f"{checkpoint_file}")
     else:
         net = Net(
-            num_classes=num_classes,
-            num_channels=num_channels,
             spatial_dims=spatial_dims,
+            num_channels=num_channels,
+            num_classes=num_classes,
             spatial_size=spatial_size,
         )
-    net.dataset = DataSet(image_dir=image_dir, labels_dir=labels_dir)
+    net.dataset = PairedDataSet(input_dir=image_dir, output_dir=labels_dir)
     net.intensity_augmentation = augment_intensity
     net.spatial_augmentation = augment_spatial
     net.cache_rate = cache_rate
@@ -401,6 +404,8 @@ def train(
                 pred_labels = val_outputs.argmax(dim=1, keepdim=True)
                 saver.save_batch(pred_labels, val_data["image_meta_dict"])
 
+    return net
+
 
 def predict(
     model_file: Path,
@@ -410,7 +415,7 @@ def predict(
     tissue_dict: Dict[str, int] = None,
     save_nifti: bool = True,
     gpu_ids: list = [],
-):
+) -> None:
     # load trained model
     model_settings_json = model_file.with_suffix(".json")
     if model_settings_json.exists():
@@ -499,7 +504,8 @@ def predict(
         metric_name=["sensitivity", "specificity", "precision", "accuracy"]
     )
 
-    to_one_hot = lambda x: one_hot(x, num_classes=num_classes, dim=0)
+    def to_one_hot(x):
+        one_hot(x, num_classes=num_classes, dim=0)
 
     tissue_names = [""] * num_classes
     if tissue_dict:
