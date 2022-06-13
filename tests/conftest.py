@@ -1,7 +1,7 @@
 import itk
-
 import pytest
-from segmantic.prepro.core import make_image, Image3
+
+from segmantic.prepro.core import Image3, make_image
 
 
 @pytest.fixture

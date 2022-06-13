@@ -1,9 +1,8 @@
 import itk
 import numpy as np
 
-import pytest
+from segmantic.prepro.core import make_image
 from segmantic.seg import evaluation
-from tests.fixture import make_image
 
 
 def test_confusion_matrix():

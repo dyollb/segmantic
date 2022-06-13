@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+
 from segmantic.prepro import labels
 
 
@@ -10,7 +11,7 @@ def tissue_map() -> dict:
     return {"Background": 0, "Bone": 1, "Fat": 2, "Skin": 3}
 
 
-def test_tissue_list_io(tmp_path: Path, tissue_map: dict):
+def test_tissue_list_io(tmp_path: Path, tissue_map: dict) -> None:
     file_path = tmp_path / "tissue.txt"
 
     labels.save_tissue_list(tissue_map, file_path)
@@ -26,7 +27,7 @@ def test_tissue_list_io(tmp_path: Path, tissue_map: dict):
     assert len(tissue_colors) == len(tissue_dict2)
 
 
-def test_build_tissue_map(tissue_map: dict):
+def test_build_tissue_map(tissue_map: dict) -> None:
 
     # map "Skin" and "Fat" to "Other_tissue"
     def _map_name(name):
