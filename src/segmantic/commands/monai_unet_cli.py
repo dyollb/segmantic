@@ -10,6 +10,15 @@ from ..seg import monai_unet
 app = typer.Typer()
 
 
+def _is_path(param: inspect.Parameter) -> bool:
+    if param.annotation != inspect.Parameter.empty and inspect.isclass(
+        param.annotation
+    ):
+        print(f"{param} {issubclass(param.annotation, Path)}")
+        return issubclass(param.annotation, Path)
+    return False
+
+
 def _get_nifti_files(dir: Path) -> List[Path]:
     if not dir:
         return []
@@ -45,9 +54,7 @@ def train_config(
         config_file.write_text(json.dumps(default_args, indent=4))
         return
 
-    cast_path = (
-        lambda v, k: Path(v) if issubclass(sig.parameters[k].annotation, Path) else v
-    )
+    cast_path = lambda v, k: Path(v) if v and _is_path(sig.parameters[k]) else v
 
     args: dict = json.loads(config_file.read_text())
     args = {k: cast_path(v, k) for k, v in args.items()}

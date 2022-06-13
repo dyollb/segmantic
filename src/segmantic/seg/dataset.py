@@ -18,9 +18,6 @@ class PairedDataSet(object):
     ):
         super().__init__()
 
-        input_dir = Path(input_dir)
-        output_dir = Path(output_dir)
-
         common_names: List[str] = []
         output_files = [p.name for p in output_dir.glob(file_extension)]
         for f in (p.name for p in input_dir.iterdir()):
