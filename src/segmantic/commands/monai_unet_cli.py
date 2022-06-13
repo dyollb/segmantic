@@ -10,7 +10,7 @@ from ..seg import monai_unet
 app = typer.Typer()
 
 
-def get_nifti_files(dir: Path) -> List[Path]:
+def _get_nifti_files(dir: Path) -> List[Path]:
     if not dir:
         return []
     return sorted([f for f in dir.glob("*.nii.gz")])
@@ -22,7 +22,7 @@ def train_config(
         ..., "--config-file", "-c", help="config file in json format"
     ),
     print_defaults: bool = False,
-):
+) -> None:
     """Train UNet with configuration provided as json file
 
     Example invocation:
@@ -46,7 +46,7 @@ def train_config(
         return
 
     cast_path = (
-        lambda v, k: Path(v) if isinstance(sig.parameters[k].annotation, Path) else v
+        lambda v, k: Path(v) if issubclass(sig.parameters[k].annotation, Path) else v
     )
 
     args: dict = json.loads(config_file.read_text())
@@ -74,7 +74,7 @@ def train(
     num_channels: int = 1,
     max_epochs: int = 600,
     gpu_ids: List[int] = [0],
-):
+) -> None:
     """Train UNet
 
     Example invocation:
@@ -115,7 +115,7 @@ def predict(
         Path("results"), "--results-dir", "-r", help="output directory"
     ),
     gpu_ids: List[int] = [0],
-):
+) -> None:
     """Predict segmentations
 
     Example invocation:
@@ -125,8 +125,8 @@ def predict(
 
     monai_unet.predict(
         model_file=model_file,
-        test_images=get_nifti_files(image_dir),
-        test_labels=get_nifti_files(labels_dir),
+        test_images=_get_nifti_files(image_dir),
+        test_labels=_get_nifti_files(labels_dir),
         tissue_dict=load_tissue_list(tissue_list),
         output_dir=results_dir,
         save_nifti=True,
