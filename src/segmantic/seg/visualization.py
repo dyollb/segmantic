@@ -5,11 +5,11 @@ from matplotlib import colors
 import matplotlib.pyplot as plt
 from pathlib import Path
 import itertools
-from typing import Dict, List, Optional
-from ..prepro.labels import load_tissue_colors
+from typing import List, Optional, Tuple
+from ..prepro.labels import load_tissue_colors, RGBTuple
 
 
-def make_tissue_cmap(tissue_list_file: Path):
+def make_tissue_cmap(tissue_list_file: Path) -> colors.ListedColormap:
     """Make a color map for from an iSEG tissue list file"""
     tissue_color_map = load_tissue_colors(tissue_list_file)
     num_classes = max(tissue_color_map.keys()) + 1
@@ -22,10 +22,10 @@ def make_tissue_cmap(tissue_list_file: Path):
     return colors.ListedColormap(col)
 
 
-def make_random_cmap(num_classes: int):
+def make_random_cmap(num_classes: int) -> colors.ListedColormap:
     """Make a random color map for <num_classes> different classes"""
 
-    def random_color(l, max_label):
+    def random_color(l: int, max_label: int) -> RGBTuple:
         if l == 0:
             return (0, 0, 0)
         hue = l / (2.0 * max_label) + (l % 2) * 0.5
@@ -47,7 +47,7 @@ def plot_confusion_matrix(
     cm: np.ndarray,
     target_names: List[str],
     title: str = "Confusion matrix",
-    cmap=None,
+    cmap: colors.Colormap = None,
     normalize: bool = True,
     file_name: Optional[Path] = None,
 ) -> None:

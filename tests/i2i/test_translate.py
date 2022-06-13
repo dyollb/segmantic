@@ -1,9 +1,8 @@
 import itk
 import numpy as np
 
-import pytest
 from segmantic.i2i.translate import make_tiles, tile_image, merge_tiles
-from tests.fixture import make_image
+from segmantic.prepro.core import make_image
 
 
 def test_tile_image():
