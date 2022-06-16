@@ -282,6 +282,8 @@ def train(
     labels_dir: Path,
     tissue_list: Path,
     output_dir: Path,
+    image_glob: str = "*.nii.gz",
+    labels_glob: str = "*.nii.gz",
     checkpoint_file: Path = None,
     num_channels: int = 1,
     spatial_dims: int = 3,
@@ -319,7 +321,12 @@ def train(
             num_classes=num_classes,
             spatial_size=spatial_size,
         )
-    net.dataset = PairedDataSet(input_dir=image_dir, output_dir=labels_dir)
+    net.dataset = PairedDataSet(
+        input_dir=image_dir,
+        input_glob=image_glob,
+        output_dir=labels_dir,
+        output_glob=labels_glob,
+    )
     net.intensity_augmentation = augment_intensity
     net.spatial_augmentation = augment_spatial
     net.cache_rate = cache_rate
