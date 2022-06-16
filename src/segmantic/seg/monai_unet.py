@@ -282,6 +282,8 @@ def train(
     labels_dir: Path,
     tissue_list: Path,
     output_dir: Path,
+    image_glob: str = "*.nii.gz",
+    labels_glob: str = "*.nii.gz",
     checkpoint_file: Path = None,
     num_channels: int = 1,
     spatial_dims: int = 3,
@@ -319,7 +321,12 @@ def train(
             num_classes=num_classes,
             spatial_size=spatial_size,
         )
-    net.dataset = PairedDataSet(input_dir=image_dir, output_dir=labels_dir)
+    net.dataset = PairedDataSet(
+        input_dir=image_dir,
+        input_glob=image_glob,
+        output_dir=labels_dir,
+        output_glob=labels_glob,
+    )
     net.intensity_augmentation = augment_intensity
     net.spatial_augmentation = augment_spatial
     net.cache_rate = cache_rate
@@ -376,6 +383,7 @@ def train(
             val_outputs = sliding_window_inference(
                 val_data["image"].to(device), roi_size, sw_batch_size, net
             )
+            assert isinstance(val_outputs, torch.Tensor)
 
             plt.figure("check", (18, 6))
             for row, slice in enumerate([80, 180]):
@@ -514,6 +522,7 @@ def predict(
             val_pred = sliding_window_inference(
                 inputs=val_image, roi_size=(96, 96, 96), sw_batch_size=4, predictor=net
             )
+            assert isinstance(val_pred, torch.Tensor)
 
             test_data["pred"] = val_pred
             for i in decollate_batch(test_data):
