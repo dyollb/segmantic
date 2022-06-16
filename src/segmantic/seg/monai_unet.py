@@ -383,6 +383,7 @@ def train(
             val_outputs = sliding_window_inference(
                 val_data["image"].to(device), roi_size, sw_batch_size, net
             )
+            assert isinstance(val_outputs, torch.Tensor)
 
             plt.figure("check", (18, 6))
             for row, slice in enumerate([80, 180]):
@@ -521,6 +522,7 @@ def predict(
             val_pred = sliding_window_inference(
                 inputs=val_image, roi_size=(96, 96, 96), sw_batch_size=4, predictor=net
             )
+            assert isinstance(val_pred, torch.Tensor)
 
             test_data["pred"] = val_pred
             for i in decollate_batch(test_data):
