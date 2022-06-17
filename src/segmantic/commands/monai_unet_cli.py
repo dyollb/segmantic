@@ -1,21 +1,14 @@
 import json
 import inspect
-from click import BadArgumentUsage
 import typer
 from pathlib import Path
 from typing import List
 
+from ..util.encoders import PathEncoder
 from ..prepro.labels import load_tissue_list
 from ..seg import monai_unet
 
 app = typer.Typer()
-
-
-class PathEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, Path):
-            return f"{obj}"
-        return json.JSONEncoder.default(self, obj)
 
 
 def _is_path(param: inspect.Parameter) -> bool:

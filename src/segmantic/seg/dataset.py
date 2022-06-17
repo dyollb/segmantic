@@ -62,22 +62,32 @@ class PairedDataSet(object):
         shuffle: bool = True,
         random_seed: int = None,
     ):
-        """Loads one or more datasets from json descriptor files and returns a single combined dataset"""
+        """Loads one or more datasets from json descriptor files and returns a single combined dataset
+
+        The json file convention follows the MSD dataset, also used e.g. by nnUNet.
+
+        The training data is loaded from the 'training' section. Glob expressions are
+        supported as well as a full list of files:
+        {
+            "training": [{"image": "image/*.nii.gz", "label": "label/*.nii.gz"}],
+        }
+        """
         data_dicts = []
         if isinstance(file_path, (Path, str)):
             file_path = [file_path]
 
         for p in (Path(f) for f in file_path):
-            d = json.loads(p.read_text())
-            args: Dict[str, Any] = {}
-            args["image_dir"] = p.parent
-            args["image_glob"] = d["image"]
-            args["labels_dir"] = p.parent
-            args["labels_glob"] = d["label"]
-            args["shuffle"] = False
-            args["valid_split"] = 0.0
-            ds = PairedDataSet(**args)
-            data_dicts += ds._train_files
+            training = json.loads(p.read_text())["training"]
+            for d in training:
+                args: Dict[str, Any] = {}
+                args["image_dir"] = p.parent
+                args["image_glob"] = d["image"]
+                args["labels_dir"] = p.parent
+                args["labels_glob"] = d["label"]
+                args["shuffle"] = False
+                args["valid_split"] = 0.0
+                ds = PairedDataSet(**args)
+                data_dicts += ds._train_files
 
         if shuffle:
             my_random = random.Random(random_seed)
