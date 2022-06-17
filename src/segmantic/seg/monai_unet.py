@@ -305,7 +305,7 @@ def train(
 
     tissue_dict = load_tissue_list(tissue_list)
     num_classes = max(tissue_dict.values()) + 1
-    if not len(tissue_dict) == num_classes:
+    if len(tissue_dict) != num_classes:
         raise ValueError("Expecting contiguous labels in range [0,N-1]")
 
     device = make_device(gpu_ids)
