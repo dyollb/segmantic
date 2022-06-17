@@ -1,5 +1,6 @@
 import json
 import inspect
+from click import BadArgumentUsage
 import typer
 from pathlib import Path
 from typing import List
@@ -10,11 +11,17 @@ from ..seg import monai_unet
 app = typer.Typer()
 
 
+class PathEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Path):
+            return f"{obj}"
+        return json.JSONEncoder.default(self, obj)
+
+
 def _is_path(param: inspect.Parameter) -> bool:
     if param.annotation != inspect.Parameter.empty and inspect.isclass(
         param.annotation
     ):
-        print(f"{param} {issubclass(param.annotation, Path)}")
         return issubclass(param.annotation, Path)
     return False
 
@@ -28,7 +35,7 @@ def _get_nifti_files(dir: Path) -> List[Path]:
 @app.command()
 def train_config(
     config_file: Path = typer.Option(
-        ..., "--config-file", "-c", help="config file in json format"
+        None, "--config-file", "-c", help="config file in json format"
     ),
     print_defaults: bool = False,
 ) -> None:
@@ -51,8 +58,12 @@ def train_config(
             else f"<required option: {v.annotation.__name__}>"
             for k, v in sig.parameters.items()
         }
-        config_file.write_text(json.dumps(default_args, indent=4))
+        if config_file:
+            config_file.write_text(json.dumps(default_args, indent=4, cls=PathEncoder))
+        print(json.dumps(default_args, indent=4, cls=PathEncoder))
         return
+    elif not config_file:
+        raise ValueError("Invalid '--config-file' argument")
 
     cast_path = lambda v, k: Path(v) if v and _is_path(sig.parameters[k]) else v
 

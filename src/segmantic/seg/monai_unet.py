@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -278,12 +278,11 @@ class Net(pl.LightningModule):
 
 
 def train(
-    image_dir: Path,
-    labels_dir: Path,
-    tissue_list: Path,
-    output_dir: Path,
-    image_glob: str = "*.nii.gz",
-    labels_glob: str = "*.nii.gz",
+    *,
+    image_dir: Path = Path(),
+    labels_dir: Path = Path(),
+    tissue_list: Path = Path(),
+    output_dir: Path = Path(),
     checkpoint_file: Path = None,
     num_channels: int = 1,
     spatial_dims: int = 3,
@@ -323,9 +322,9 @@ def train(
         )
     net.dataset = PairedDataSet(
         input_dir=image_dir,
-        input_glob=image_glob,
+        input_glob="*.nii.gz",
         output_dir=labels_dir,
-        output_glob=labels_glob,
+        output_glob="*.nii.gz",
     )
     net.intensity_augmentation = augment_intensity
     net.spatial_augmentation = augment_spatial
