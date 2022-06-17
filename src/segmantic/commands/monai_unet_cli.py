@@ -48,6 +48,33 @@ def train_config(
     To generate a default config:
 
         --config-file my_config.json --print-defaults
+
+    The config should either specify a 'dataset' or an 'image_dir'/'labels_dir' pair.
+
+    The dataset can be a single file or a list of files in json format, specifying
+    lists of image and label files, or glob expressions for image and labels.
+
+    Example config using 'image_dir'/'labels_dir':
+    {
+        "image_dir" = "/dataA/image",
+        "labels_dir" = "/dataA/label",
+        "output_dir" = "<path where trained model and logs are saved>",
+        ...
+    }
+
+    Example config 'single dataset':
+    {
+        "dataset" = "/dataA/dataset.json",
+        "output_dir" = "<path where trained model and logs are saved>",
+        ...
+    }
+
+    Example config 'multiple datasets':
+    {
+        "dataset" = ["/dataA/dataset.json", "/dataB/dataset.json"]
+        "output_dir" = "<path where trained model and logs are saved>",
+        ...
+    }
     """
     sig = inspect.signature(monai_unet.train)
 

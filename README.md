@@ -42,22 +42,21 @@ python src/segmantic/scripts/run_monai_unet.py train -i work/inputs/images -l wo
 
 Or with a config file - first create empty config file:
 ```
-python scripts\run_monai_unet.py train-config -c config.txt --print-defaults
+python scripts\run_monai_unet.py train-config -c config.json --print-defaults
 ```
 
-Edit `config.txt` e.g. to
+Edit `config.json` e.g. to
 ```
 {
     "image_dir": "work/inputs/images",
     "labels_dir": "work/inputs/labels",
-    "tissue_list": "work/inputs/labels_16.txt",
+    "tissue_list": "work/inputs/labels.txt",
     "output_dir": "work/outputs",
     "checkpoint_file": null,
     "num_channels": 1,
     "spatial_dims": 3,
-    "spatial_size": null,
     "max_epochs": 5,
-    "augment_intensity": false,
+    "augment_intensity": true,
     "augment_spatial": false,
     "mixed_precision": true,
     "cache_rate": 1.0,
@@ -70,5 +69,5 @@ Edit `config.txt` e.g. to
 
 Now run training:
 ```
-python scripts\run_monai_unet.py train-config -c config.txt
+python scripts\run_monai_unet.py train-config -c config.json
 ```

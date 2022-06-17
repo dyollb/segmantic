@@ -17,6 +17,9 @@ class PairedDataSet(object):
         random_seed: int = None,
         max_files: int = 0,
     ):
+
+        assert image_dir.is_dir() and labels_dir.is_dir()
+
         image_files = list(image_dir.glob(image_glob))
         label_files = list(labels_dir.glob(labels_glob))
         assert len(image_files) == len(label_files)
@@ -61,15 +64,15 @@ class PairedDataSet(object):
     ):
         """Loads one or more datasets from json descriptor files and returns a single combined dataset"""
         data_dicts = []
-        if isinstance(file_path, Path):
+        if isinstance(file_path, (Path, str)):
             file_path = [file_path]
 
-        for f in file_path:
-            d = json.loads(f.read_text())
+        for p in (Path(f) for f in file_path):
+            d = json.loads(p.read_text())
             args: Dict[str, Any] = {}
-            args["image_dir"] = f.parent
+            args["image_dir"] = p.parent
             args["image_glob"] = d["image"]
-            args["labels_dir"] = f.parent
+            args["labels_dir"] = p.parent
             args["labels_glob"] = d["label"]
             args["shuffle"] = False
             args["valid_split"] = 0.0
