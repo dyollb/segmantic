@@ -41,8 +41,12 @@ def test_load_from_json(tmp_path: Path):
     (tmp_path / "dataset.json").write_text(
         json.dumps(
             {
-                "image": f"{image_dir.name}/*.nii.gz",
-                "label": f"{labels_dir.name}/*.nii.gz",
+                "training": [
+                    {
+                        "image": f"{image_dir.name}/*.nii.gz",
+                        "label": f"{labels_dir.name}/*.nii.gz",
+                    }
+                ]
             }
         )
     )
