@@ -512,7 +512,7 @@ def predict(
     )
 
     def to_one_hot(x):
-        one_hot(x, num_classes=num_classes, dim=0)
+        return one_hot(x, num_classes=num_classes, dim=0)
 
     tissue_names = [""] * num_classes
     if tissue_dict:
