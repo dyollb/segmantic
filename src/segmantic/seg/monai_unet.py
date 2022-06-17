@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -278,12 +278,12 @@ class Net(pl.LightningModule):
 
 
 def train(
-    image_dir: Path,
-    labels_dir: Path,
-    tissue_list: Path,
-    output_dir: Path,
-    image_glob: str = "*.nii.gz",
-    labels_glob: str = "*.nii.gz",
+    *,
+    dataset: Union[Path, List[Path]] = None,
+    image_dir: Path = None,
+    labels_dir: Path = None,
+    tissue_list: Path = Path(),
+    output_dir: Path = Path(),
     checkpoint_file: Path = None,
     num_channels: int = 1,
     spatial_dims: int = 3,
@@ -305,7 +305,7 @@ def train(
 
     tissue_dict = load_tissue_list(tissue_list)
     num_classes = max(tissue_dict.values()) + 1
-    if not len(tissue_dict) == num_classes:
+    if len(tissue_dict) != num_classes:
         raise ValueError("Expecting contiguous labels in range [0,N-1]")
 
     device = make_device(gpu_ids)
@@ -321,15 +321,20 @@ def train(
             num_classes=num_classes,
             spatial_size=spatial_size,
         )
-    net.dataset = PairedDataSet(
-        input_dir=image_dir,
-        input_glob=image_glob,
-        output_dir=labels_dir,
-        output_glob=labels_glob,
-    )
+    if image_dir and labels_dir:
+        net.dataset = PairedDataSet(image_dir=image_dir, labels_dir=labels_dir)
+    elif not dataset:
+        raise ValueError(
+            "Either provide a dataset file, or an image_dir, labels_dir pair."
+        )
+    else:
+        net.dataset = PairedDataSet.load_from_json(dataset)
     net.intensity_augmentation = augment_intensity
     net.spatial_augmentation = augment_spatial
     net.cache_rate = cache_rate
+
+    # store dataset used for training
+    (output_dir / "Dataset.json").write_text(net.dataset.dump_dataset())
 
     # set up loggers and checkpoints
     tb_logger = TensorBoardLogger(save_dir=f"{log_dir}")

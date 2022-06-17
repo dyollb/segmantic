@@ -4,6 +4,7 @@ import typer
 from pathlib import Path
 from typing import List
 
+from ..util.encoders import PathEncoder
 from ..prepro.labels import load_tissue_list
 from ..seg import monai_unet
 
@@ -14,7 +15,6 @@ def _is_path(param: inspect.Parameter) -> bool:
     if param.annotation != inspect.Parameter.empty and inspect.isclass(
         param.annotation
     ):
-        print(f"{param} {issubclass(param.annotation, Path)}")
         return issubclass(param.annotation, Path)
     return False
 
@@ -28,7 +28,7 @@ def _get_nifti_files(dir: Path) -> List[Path]:
 @app.command()
 def train_config(
     config_file: Path = typer.Option(
-        ..., "--config-file", "-c", help="config file in json format"
+        None, "--config-file", "-c", help="config file in json format"
     ),
     print_defaults: bool = False,
 ) -> None:
@@ -41,6 +41,33 @@ def train_config(
     To generate a default config:
 
         --config-file my_config.json --print-defaults
+
+    The config should either specify a 'dataset' or an 'image_dir'/'labels_dir' pair.
+
+    The dataset can be a single file or a list of files in json format, specifying
+    lists of image and label files, or glob expressions for image and labels.
+
+    Example config using 'image_dir'/'labels_dir':
+    {
+        "image_dir" = "/dataA/image",
+        "labels_dir" = "/dataA/label",
+        "output_dir" = "<path where trained model and logs are saved>",
+        ...
+    }
+
+    Example config 'single dataset':
+    {
+        "dataset" = "/dataA/dataset.json",
+        "output_dir" = "<path where trained model and logs are saved>",
+        ...
+    }
+
+    Example config 'multiple datasets':
+    {
+        "dataset" = ["/dataA/dataset.json", "/dataB/dataset.json"],
+        "output_dir" = "<path where trained model and logs are saved>",
+        ...
+    }
     """
     sig = inspect.signature(monai_unet.train)
 
@@ -51,8 +78,12 @@ def train_config(
             else f"<required option: {v.annotation.__name__}>"
             for k, v in sig.parameters.items()
         }
-        config_file.write_text(json.dumps(default_args, indent=4))
+        if config_file:
+            config_file.write_text(json.dumps(default_args, indent=4, cls=PathEncoder))
+        print(json.dumps(default_args, indent=4, cls=PathEncoder))
         return
+    elif not config_file:
+        raise ValueError("Invalid '--config-file' argument")
 
     cast_path = lambda v, k: Path(v) if v and _is_path(sig.parameters[k]) else v
 
