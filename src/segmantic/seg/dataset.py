@@ -1,7 +1,7 @@
 import random
 import json
 from pathlib import Path
-from typing import List, Dict, Sequence, Union
+from typing import Any, List, Dict, Sequence, Union
 
 
 class PairedDataSet(object):
@@ -9,8 +9,8 @@ class PairedDataSet(object):
         self,
         image_dir: Path = Path(),
         image_glob: str = "*.nii.gz",
-        label_dir: Path = Path(),
-        label_glob: str = "*.nii.gz",
+        labels_dir: Path = Path(),
+        labels_glob: str = "*.nii.gz",
         *,
         valid_split: float = 0.2,
         shuffle: bool = True,
@@ -18,7 +18,7 @@ class PairedDataSet(object):
         max_files: int = 0,
     ):
         image_files = list(image_dir.glob(image_glob))
-        label_files = list(label_dir.glob(label_glob))
+        label_files = list(labels_dir.glob(labels_glob))
         assert len(image_files) == len(label_files)
 
         data_dicts: List[Dict[str, Path]] = []
@@ -53,7 +53,7 @@ class PairedDataSet(object):
 
     @staticmethod
     def load_from_json(
-        file_path: Union[Path, Sequence[Path]],
+        file_path: Union[Path, List[Path]],
         *,
         valid_split: float = 0.2,
         shuffle: bool = True,
@@ -66,10 +66,13 @@ class PairedDataSet(object):
 
         for f in file_path:
             d = json.loads(f.read_text())
-            args = {k: Path(d[k]) for k in ("image_dir", "label_dir")}
+            args: Dict[str, Any] = {}
+            args["image_dir"] = f.parent
+            args["image_glob"] = d["image"]
+            args["labels_dir"] = f.parent
+            args["labels_glob"] = d["label"]
             args["shuffle"] = False
             args["valid_split"] = 0.0
-            print(args)
             ds = PairedDataSet(**args)
             data_dicts += ds._train_files
 

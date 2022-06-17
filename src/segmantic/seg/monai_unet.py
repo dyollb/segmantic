@@ -279,8 +279,9 @@ class Net(pl.LightningModule):
 
 def train(
     *,
-    image_dir: Path = Path(),
-    labels_dir: Path = Path(),
+    dataset: Union[Path, List[Path]] = None,
+    image_dir: Path = None,
+    labels_dir: Path = None,
     tissue_list: Path = Path(),
     output_dir: Path = Path(),
     checkpoint_file: Path = None,
@@ -320,12 +321,14 @@ def train(
             num_classes=num_classes,
             spatial_size=spatial_size,
         )
-    net.dataset = PairedDataSet(
-        input_dir=image_dir,
-        input_glob="*.nii.gz",
-        output_dir=labels_dir,
-        output_glob="*.nii.gz",
-    )
+    if image_dir and labels_dir:
+        net.dataset = PairedDataSet(image_dir=image_dir, labels_dir=labels_dir)
+    elif not dataset:
+        raise ValueError(
+            "Either provide a dataset file, or an image_dir, labels_dir pair."
+        )
+    else:
+        net.dataset = PairedDataSet.load_from_json(dataset)
     net.intensity_augmentation = augment_intensity
     net.spatial_augmentation = augment_spatial
     net.cache_rate = cache_rate
