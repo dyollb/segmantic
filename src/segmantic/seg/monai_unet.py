@@ -45,7 +45,6 @@ from monai.utils import set_determinism
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from ..util.encoders import PathEncoder
 from ..prepro.labels import load_tissue_list
 from .dataset import PairedDataSet
 from .evaluation import confusion_matrix
@@ -335,15 +334,7 @@ def train(
     net.cache_rate = cache_rate
 
     # store dataset used for training
-    (output_dir / "Dataset.json").write_text(
-        json.dumps(
-            {
-                "trainig": net.dataset.training_files(),
-                "validation": net.dataset.validation_files(),
-            },
-            cls=PathEncoder,
-        )
-    )
+    (output_dir / "Dataset.json").write_text(net.dataset.dump_dataset())
 
     # set up loggers and checkpoints
     tb_logger = TensorBoardLogger(save_dir=f"{log_dir}")

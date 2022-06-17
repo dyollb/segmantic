@@ -1,7 +1,10 @@
 import random
 import json
+
 from pathlib import Path
 from typing import Any, List, Dict, Sequence, Union
+
+from ..util.encoders import PathEncoder
 
 
 class PairedDataSet(object):
@@ -17,8 +20,12 @@ class PairedDataSet(object):
         random_seed: int = None,
         max_files: int = 0,
     ):
-
         assert image_dir.is_dir() and labels_dir.is_dir()
+
+        if Path(image_glob).is_absolute():
+            image_glob = str(Path(image_glob).relative_to(image_dir))
+        if Path(labels_glob).is_absolute():
+            labels_glob = str(Path(labels_glob).relative_to(labels_dir))
 
         image_files = list(image_dir.glob(image_glob))
         label_files = list(labels_dir.glob(labels_glob))
@@ -27,6 +34,25 @@ class PairedDataSet(object):
         data_dicts: List[Dict[str, Path]] = []
         for i, o in zip(sorted(image_files), sorted(label_files)):
             data_dicts.append({"image": i, "label": o})
+
+        self._create_split(data_dicts, valid_split, shuffle, random_seed, max_files)
+
+    def training_files(self) -> Sequence[Dict[str, Path]]:
+        """Get list of 'image'/'label' pairs (dictionary) for training"""
+        return self._train_files
+
+    def validation_files(self) -> Sequence[Dict[str, Path]]:
+        """Get list of 'image'/'label' pairs (dictionary) for validation"""
+        return self._val_files
+
+    def _create_split(
+        self,
+        data_dicts: List[Dict[str, Path]],
+        valid_split: float,
+        shuffle: bool,
+        random_seed: int = None,
+        max_files: int = 0,
+    ):
 
         if shuffle:
             my_random = random.Random(random_seed)
@@ -54,6 +80,15 @@ class PairedDataSet(object):
                     f"The pair image/label pair {d['image']} : {d['label']} doesn't correspond."
                 )
 
+    def dump_dataset(self) -> str:
+        return json.dumps(
+            {
+                "training": self._train_files + self._val_files,
+                "split": [len(self._train_files), len(self._val_files)],
+            },
+            cls=PathEncoder,
+        )
+
     @staticmethod
     def load_from_json(
         file_path: Union[Path, List[Path]],
@@ -72,41 +107,26 @@ class PairedDataSet(object):
             "training": [{"image": "image/*.nii.gz", "label": "label/*.nii.gz"}],
         }
         """
-        data_dicts = []
         if isinstance(file_path, (Path, str)):
             file_path = [file_path]
+
+        data_dicts: List[Dict[str, Path]] = []
 
         for p in (Path(f) for f in file_path):
             training = json.loads(p.read_text())["training"]
             for d in training:
-                args: Dict[str, Any] = {}
-                args["image_dir"] = p.parent
-                args["image_glob"] = d["image"]
-                args["labels_dir"] = p.parent
-                args["labels_glob"] = d["label"]
-                args["shuffle"] = False
-                args["valid_split"] = 0.0
-                ds = PairedDataSet(**args)
-                data_dicts += ds._train_files
+                # special case: absolute paths
+                if Path(d["image"]).is_absolute():
+                    image_files = [Path(d["image"])]
+                    label_files = [Path(d["label"])]
+                else:
+                    image_files = list(p.parent.glob(d["image"]))
+                    label_files = list(p.parent.glob(d["label"]))
+                    assert len(image_files) == len(label_files)
 
-        if shuffle:
-            my_random = random.Random(random_seed)
-            my_random.shuffle(data_dicts)
-
-        num_total = len(data_dicts)
-        num_valid = max(int(valid_split * num_total), 1)
+                for i, o in zip(sorted(image_files), sorted(label_files)):
+                    data_dicts.append({"image": i, "label": o})
 
         combined_ds = PairedDataSet()
-        combined_ds._train_files = data_dicts[num_valid:num_total]
-        combined_ds._val_files = data_dicts[:num_valid]
+        combined_ds._create_split(data_dicts, valid_split, shuffle, random_seed)
         return combined_ds
-
-    def training_files(self) -> Sequence[Dict[str, Path]]:
-        return self._train_files
-
-    def validation_files(self) -> Sequence[Dict[str, Path]]:
-        return self._val_files
-
-
-if __name__ == "__main__":
-    ds = PairedDataSet()

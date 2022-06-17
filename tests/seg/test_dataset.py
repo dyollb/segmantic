@@ -38,7 +38,8 @@ def test_PairedDataSet(tmp_path: Path):
 def test_load_from_json(tmp_path: Path):
     image_dir, labels_dir = dataset_mockup(root_path=tmp_path, size=3)
 
-    (tmp_path / "dataset.json").write_text(
+    dataset_file = tmp_path / "dataset.json"
+    dataset_file.write_text(
         json.dumps(
             {
                 "training": [
@@ -51,9 +52,15 @@ def test_load_from_json(tmp_path: Path):
         )
     )
 
-    ds = dataset.PairedDataSet.load_from_json(
-        tmp_path / "dataset.json", valid_split=0.2
-    )
+    ds = dataset.PairedDataSet.load_from_json(dataset_file, valid_split=0.2)
+    assert len(ds.training_files()) == 2
+    assert len(ds.validation_files()) == 1
+    ds.check_matching_filenames()
+
+    # now dump and try to re-load
+    dataset_file2 = tmp_path / "dataset_dump.json"
+    dataset_file2.write_text(ds.dump_dataset())
+    ds = dataset.PairedDataSet.load_from_json(dataset_file2, valid_split=0.2)
     assert len(ds.training_files()) == 2
     assert len(ds.validation_files()) == 1
     ds.check_matching_filenames()
