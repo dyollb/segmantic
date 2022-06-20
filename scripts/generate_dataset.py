@@ -1,20 +1,20 @@
-import glob
 import json
-import typer
 from pathlib import Path
-from typing import List
+
+import typer
+
 from segmantic.util.encoders import PathEncoder
 
 
 def generate_dataset(
     *,
-    dataset_file: Path,
     image_dir: Path,
     labels_dir: Path,
     image_glob: str = "*.nii.gz",
     labels_glob: str = "*.nii.gz",
+    dataset_file: Path = None,
 ):
-    common_names: List[str] = []
+    """Generate json file describing"""
 
     labels_ext = labels_glob.replace("*", "", 1)
     labels_file = {
@@ -33,15 +33,16 @@ def generate_dataset(
 
     print(f"Number of pairs: {len(data_dicts)}")
 
-    dataset_file.write_text(
-        json.dumps(
-            {
-                "training": data_dicts,
-            },
-            indent=2,
-            cls=PathEncoder,
-        )
+    json_text = json.dumps(
+        {
+            "training": data_dicts,
+        },
+        cls=PathEncoder,
     )
+    if dataset_file:
+        dataset_file.write_text(json_text)
+    else:
+        print(json_text)
 
 
 if __name__ == "__main__":
