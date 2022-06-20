@@ -168,14 +168,12 @@ class Net(pl.LightningModule):
                 RandCropByLabelClassesd(
                     keys=keys,
                     label_key="label",
-                    image_key="image",
                     spatial_size=self.spatial_size,
                     num_classes=self.num_classes,
                     num_samples=4,
-                    image_threshold=-np.inf,
                 )
             )
-        return Compose(xforms + [EnsureTyped(keys=keys)])
+        return Compose(xforms + [EnsureTyped(keys=keys, dtype=np.float32)])
 
     def forward(self, x):
         return self._model(x)
@@ -323,12 +321,12 @@ def train(
         )
     if image_dir and labels_dir:
         net.dataset = PairedDataSet(image_dir=image_dir, labels_dir=labels_dir)
-    elif not dataset:
+    elif dataset:
+        net.dataset = PairedDataSet.load_from_json(dataset)
+    else:
         raise ValueError(
             "Either provide a dataset file, or an image_dir, labels_dir pair."
         )
-    else:
-        net.dataset = PairedDataSet.load_from_json(dataset)
     net.intensity_augmentation = augment_intensity
     net.spatial_augmentation = augment_spatial
     net.cache_rate = cache_rate
