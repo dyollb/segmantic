@@ -3,13 +3,13 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Union
 
-import matplotlib.pyplot as plt
 import numpy as np
+import pytorch_lightning as pl
 import torch
 import torch.utils.data
-import pytorch_lightning as pl
+from monai.bundle import ConfigParser
 from monai.config import print_config
-from monai.data import CacheDataset, NiftiSaver, decollate_batch, list_data_collate
+from monai.data import CacheDataset, decollate_batch, list_data_collate
 from monai.inferers import sliding_window_inference
 from monai.losses import DiceLoss
 from monai.metrics import ConfusionMatrixMetric, DiceMetric
@@ -49,12 +49,13 @@ from ..prepro.labels import load_tissue_list
 from .dataset import PairedDataSet
 from .evaluation import confusion_matrix
 from .utils import make_device
-from .visualization import make_tissue_cmap, plot_confusion_matrix
+from .visualization import plot_confusion_matrix
 
 
 class Net(pl.LightningModule):
     dataset: Optional[PairedDataSet]
     cache_rate: float = 1.0
+    pre_processing_train_config: dict = {}
     intensity_augmentation: bool = False
     spatial_augmentation: bool = False
     best_val_dice = 0
@@ -186,10 +187,15 @@ class Net(pl.LightningModule):
         set_determinism(seed=0)
 
         # define the data transforms
-        train_transforms = self.create_transforms(
-            keys=["image", "label"],
-            train=True,
-        )
+        if self.pre_processing_train_config:
+            parser = ConfigParser(self.pre_processing_train_config)
+            parser.parse(True)
+            train_transforms = parser.get_parsed_content("pre_processing_train")
+        else:
+            train_transforms = self.create_transforms(
+                keys=["image", "label"],
+                train=True,
+            )
         val_transforms = self.create_transforms(
             keys=["image", "label"],
             train=False,
@@ -286,12 +292,13 @@ def train(
     num_channels: int = 1,
     spatial_dims: int = 3,
     spatial_size: Sequence[int] = None,
-    max_epochs: int = 600,
+    pre_processing: dict = None,
+    post_processing: str = None,
     augment_intensity: bool = False,
     augment_spatial: bool = False,
+    max_epochs: int = 600,
     mixed_precision: bool = True,
     cache_rate: float = 1.0,
-    save_nifti: bool = True,
     gpu_ids: List[int] = [0],
 ) -> pl.LightningModule:
 
@@ -306,9 +313,6 @@ def train(
     if len(tissue_dict) != num_classes:
         raise ValueError("Expecting contiguous labels in range [0,N-1]")
 
-    device = make_device(gpu_ids)
-
-    """Run the training"""
     # initialise the LightningModule
     if checkpoint_file and Path(checkpoint_file).exists():
         net = Net.load_from_checkpoint(f"{checkpoint_file}")
@@ -327,6 +331,7 @@ def train(
         raise ValueError(
             "Either provide a dataset file, or an image_dir, labels_dir pair."
         )
+    net.pre_processing_train_config = pre_processing
     net.intensity_augmentation = augment_intensity
     net.spatial_augmentation = augment_spatial
     net.cache_rate = cache_rate
@@ -345,8 +350,6 @@ def train(
     )
 
     # initialise Lightning's trainer.
-    # other options:
-    #  - max_time={"days": 1, "hours": 5}
     trainer = pl.Trainer(
         gpus=gpu_ids,
         precision=16 if mixed_precision else 32,
@@ -364,51 +367,6 @@ def train(
         f"at epoch {net.best_val_epoch}"
     )
 
-    """## View training in tensorboard"""
-
-    # Commented out IPython magic to ensure Python compatibility.
-    # %load_ext tensorboard
-    # %tensorboard --logdir=log_dir
-
-    """## Check best model output with the input image and label"""
-    if save_nifti:
-        os.makedirs(output_dir, exist_ok=True)
-        saver = NiftiSaver(output_dir=output_dir, separate_folder=False, resample=False)
-
-    net.eval()
-    net.to(device)
-    with torch.no_grad():
-        cmap = make_tissue_cmap(tissue_list)
-
-        for i, val_data in enumerate(net.val_dataloader()):
-            roi_size = (160, 160, 160)
-            sw_batch_size = 4
-            val_outputs = sliding_window_inference(
-                val_data["image"].to(device), roi_size, sw_batch_size, net
-            )
-            assert isinstance(val_outputs, torch.Tensor)
-
-            plt.figure("check", (18, 6))
-            for row, slice in enumerate([80, 180]):
-                plt.subplot(2, 3, 1 + row * 3)
-                plt.title(f"image {i}")
-                plt.imshow(val_data["image"][0, 0, :, :, slice], cmap="gray")
-                plt.subplot(2, 3, 2 + row * 3)
-                plt.title(f"label {i}")
-                plt.imshow(val_data["label"][0, 0, :, :, slice], cmap=cmap)
-                plt.subplot(2, 3, 3 + row * 3)
-                plt.title(f"output {i}")
-                plt.imshow(
-                    torch.argmax(val_outputs, dim=1).detach().cpu()[0, :, :, slice],
-                    cmap=cmap,
-                )
-            plot_file_path = output_dir / f"drcmr{num_classes:02d}_case{i}.png"
-            plt.savefig(f"{plot_file_path}")
-
-            if saver:
-                pred_labels = val_outputs.argmax(dim=1, keepdim=True)
-                saver.save_batch(pred_labels, val_data["image_meta_dict"])
-
     return net
 
 
@@ -424,7 +382,7 @@ def predict(
     # load trained model
     model_settings_json = model_file.with_suffix(".json")
     if model_settings_json.exists():
-        print(f"Loading legacy model settings from {model_settings_json}")
+        print(f"WARNING: Loading legacy model settings from {model_settings_json}")
         with model_settings_json.open() as json_file:
             settings = json.load(json_file)
         net = Net.load_from_checkpoint(f"{model_file}", **settings)
@@ -432,6 +390,7 @@ def predict(
         net = Net.load_from_checkpoint(f"{model_file}")
     num_classes = net.num_classes
 
+    net.freeze()
     net.eval()
     device = make_device(gpu_ids)
     net.to(device)
@@ -478,23 +437,15 @@ def predict(
     post_transforms = Compose(
         [
             EnsureTyped(keys="pred"),
-            # Activationsd(keys="pred", sigmoid=True),
             Invertd(
-                keys="pred",  # invert the `pred` data field, also support multiple fields
+                keys="pred",
                 transform=pre_transforms,
-                orig_keys="image",  # get the previously applied pre_transforms information on the `img` data field,
-                # then invert `pred` based on this information. we can use same info
-                # for multiple fields, also support different orig_keys for different fields
-                meta_keys="pred_meta_dict",  # key field to save inverted meta data, every item maps to `keys`
-                orig_meta_keys="image_meta_dict",  # get the meta data from `img_meta_dict` field when inverting,
-                # for example, may need the `affine` to invert `Spacingd` transform,
-                # multiple fields can use the same meta data to invert
-                meta_key_postfix="meta_dict",  # if `meta_keys=None`, use "{keys}_{meta_key_postfix}" as the meta key,
-                # if `orig_meta_keys=None`, use "{orig_keys}_{meta_key_postfix}",
-                # otherwise, no need this arg during inverting
-                nearest_interp=False,  # don't change the interpolation mode to "nearest" when inverting transforms
-                # to ensure a smooth output, then execute `AsDiscreted` transform
-                to_tensor=True,  # convert to PyTorch Tensor after inverting
+                orig_keys="image",
+                meta_keys="pred_meta_dict",
+                orig_meta_keys="image_meta_dict",
+                meta_key_postfix="meta_dict",
+                nearest_interp=False,
+                to_tensor=True,
             ),
             AsDiscreted(keys="pred", argmax=True),
         ]
