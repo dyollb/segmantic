@@ -82,4 +82,5 @@ jobs:
       working-directory: segmantic_src
       run: |
         pip install mypy
+        mypy --install-types
         mypy .
