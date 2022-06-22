@@ -1,0 +1,73 @@
+{
+    "dataset": null,
+    "tissue_list": null,
+    "output_dir": null,
+    "checkpoint_file": null,
+    "num_channels": 1,
+    "spatial_dims": 3,
+    "spatial_size": null,
+    "batch_size": 4,
+    "max_epochs": 100,
+    "augment_intensity": false,
+    "augment_spatial": false,
+    "mixed_precision": true,
+    "cache_rate": 1.0,
+    "gpu_ids": [
+        0
+    ],
+    "image_key": "image",
+    "preprocessing": {
+        "_target_": "Compose",
+        "transforms": [
+            {
+                "_target_": "LoadImaged",
+                "keys": "@image_key"
+            },
+            {
+                "_target_": "EnsureChannelFirstd",
+                "keys": "@image_key"
+            },
+            {
+                "_target_": "NormalizeIntensityd",
+                "keys": "@image_key",
+                "nonzero": true
+            },
+            {
+                "_target_": "RandRotated",
+                "keys": "@image_key"
+            },
+            {
+                "_target_": "EnsureTyped",
+                "keys": "@image_key"
+            }
+        ]
+    },
+    "postprocessing": {
+        "_target_": "Compose",
+        "transforms": [
+            {
+                "_target_": "EnsureTyped",
+                "keys": "pred"
+            },
+            {
+                "_target_": "Invertd",
+                "keys": "pred",
+                "transform": "@preprocessing",
+                "orig_keys": "image",
+                "meta_keys": "pred_meta_dict",
+                "orig_meta_keys": "image_meta_dict",
+                "meta_key_postfix": "meta_dict",
+                "nearest_interp": false
+            },
+            {
+                "_target_": "AsDiscreted",
+                "keys": "pred",
+                "argmax": true
+            }
+        ]
+    },
+    "trainer": {
+        "_target_": "pytorch_lightning.Trainer",
+        "max_epochs": 123
+    }
+}

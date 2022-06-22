@@ -1,12 +1,15 @@
-import json
 import inspect
-import typer
+import json
+from functools import partial
 from pathlib import Path
 from typing import List
 
-from ..util.encoders import PathEncoder
+import typer
+import yaml
+
 from ..prepro.labels import load_tissue_list
 from ..seg import monai_unet
+from ..util.encoders import PathEncoder
 
 app = typer.Typer()
 
@@ -17,6 +20,15 @@ def _is_path(param: inspect.Parameter) -> bool:
     ):
         return issubclass(param.annotation, Path)
     return False
+
+
+def _get_dumper():
+    def _path_representer(dumper, data):
+        return dumper.represent_scalar("tag:yaml.org,2002:str", str(data))
+
+    dumper = yaml.Dumper
+    dumper.add_representer(Path, _path_representer)
+    return dumper
 
 
 def _get_nifti_files(dir: Path) -> List[Path]:
@@ -71,24 +83,37 @@ def train_config(
     """
     sig = inspect.signature(monai_unet.train)
 
+    format_is_json = config_file and config_file.suffix.lower() == ".json"
+    dumps = (
+        partial(json.dumps, cls=PathEncoder, indent=4)
+        if format_is_json
+        else partial(yaml.dump, Dumper=_get_dumper(), sort_keys=False)
+    )
+    loads = json.loads if format_is_json else yaml.safe_load
+
     if print_defaults:
+        cast_from_path = (
+            lambda v, k: str(v) if v and _is_path(sig.parameters[k]) else v
+        )  # noqa: E731
         default_args = {
-            k: v.default
+            k: cast_from_path(v.default, k)
             if v.default is not inspect.Parameter.empty
             else f"<required option: {v.annotation.__name__}>"
             for k, v in sig.parameters.items()
         }
         if config_file:
-            config_file.write_text(json.dumps(default_args, indent=4, cls=PathEncoder))
-        print(json.dumps(default_args, indent=4, cls=PathEncoder))
+            config_file.write_text(dumps(default_args))
+        print(dumps(default_args))
         return
     elif not config_file:
         raise ValueError("Invalid '--config-file' argument")
 
-    cast_path = lambda v, k: Path(v) if v and _is_path(sig.parameters[k]) else v
+    cast_to_path = (
+        lambda v, k: Path(v) if v and _is_path(sig.parameters[k]) else v
+    )  # noqa: E731
 
-    args: dict = json.loads(config_file.read_text())
-    args = {k: cast_path(v, k) for k, v in args.items()}
+    args: dict = loads(config_file.read_text())
+    args = {k: cast_to_path(v, k) for k, v in args.items()}
     monai_unet.train(**args)
 
 
@@ -127,7 +152,6 @@ def train(
         num_channels=num_channels,
         max_epochs=max_epochs,
         output_dir=output_dir,
-        save_nifti=True,
         gpu_ids=gpu_ids,
     )
 

@@ -1,7 +1,8 @@
-import numpy as np
 import colorsys
 from pathlib import Path
 from typing import Callable, Dict, Tuple
+
+import numpy as np
 
 RGBTuple = Tuple[float, float, float]
 
@@ -58,16 +59,17 @@ def save_tissue_list(
 
     if tissue_color_map is None:
 
-        def _random_color(l: int, max_label: int) -> RGBTuple:
-            if l <= 0:
+        def _random_color(name: str) -> RGBTuple:
+            id, max_label = tissue_label_map[name], num_tissues
+            if id <= 0:
                 raise ValueError(
                     "Background (label=0) is implicit and not written to file"
                 )
-            hue = l / (2.0 * max_label) + (l % 2) * 0.5
+            hue = id / (2.0 * max_label) + (id % 2) * 0.5
             hue = min(hue, 1.0)
             return colorsys.hls_to_rgb(hue, 0.5, 1.0)
 
-        tissue_color_map = lambda n: _random_color(tissue_label_map[n], num_tissues)
+        tissue_color_map = _random_color
 
     with open(tissue_list_file_name, "w") as f:
         print("V7", file=f)
@@ -96,7 +98,7 @@ def load_tissue_list(file_name: Path) -> Dict[str, int]:
     with open(file_name) as f:
         for line in f.readlines():
             if line.startswith("C"):
-                tissue = line.rsplit(" ", 1)[-1].rstrip()
+                tissue = line.strip().rsplit(" ", 1)[-1].rstrip()
                 if tissue in tissue_label_map:
                     raise KeyError(f"duplicate label '{tissue}' found in '{file_name}'")
                 tissue_label_map[tissue] = next_id
@@ -119,7 +121,7 @@ def load_tissue_colors(file_name: Path) -> Dict[int, RGBTuple]:
     with open(file_name) as f:
         for line in f.readlines():
             if line.startswith("C"):
-                rgba = [float(v.strip()) for v in line.lstrip("C").split(" ")[:-1]]
+                rgb = [float(v.strip()) for v in line.lstrip("C").split(" ")[:3]]
                 tissue_idx += 1
-                tissue_color_map[tissue_idx] = (rgba[0], rgba[1], rgba[2])
+                tissue_color_map[tissue_idx] = (rgb[0], rgb[1], rgb[2])
     return tissue_color_map

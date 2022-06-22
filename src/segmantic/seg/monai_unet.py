@@ -29,14 +29,7 @@ from monai.transforms import (
     LoadImaged,
     NormalizeIntensityd,
     Orientationd,
-    RandAdjustContrastd,
     RandCropByLabelClassesd,
-    RandFlipd,
-    RandGibbsNoised,
-    RandHistogramShiftd,
-    RandKSpaceSpikeNoised,
-    RandRotated,
-    RandZoomd,
     SaveImaged,
 )
 from monai.transforms.spatial.dictionary import Spacingd
@@ -55,7 +48,8 @@ from .visualization import plot_confusion_matrix
 class Net(pl.LightningModule):
     dataset: Optional[PairedDataSet]
     cache_rate: float = 1.0
-    pre_processing_train_config: dict = {}
+    config_preprocessing: dict = {}
+    config_augmentation: dict = {}
     intensity_augmentation: bool = False
     spatial_augmentation: bool = False
     best_val_dice = 0
@@ -104,77 +98,38 @@ class Net(pl.LightningModule):
     def spatial_dims(self):
         return self._model.dimensions
 
-    def create_transforms(
+    def default_preprocessing(
         self,
         keys: List[str],
-        train: bool = False,
         spacing: Sequence[float] = None,
     ) -> Transform:
-        # loading and normalization
+
         xforms = [
             LoadImaged(keys=keys, reader="itkreader"),
             EnsureChannelFirstd(keys="image"),
             Orientationd(keys=keys, axcodes="RAS"),
             NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
             CropForegroundd(keys=keys, source_key="image"),
+            EnsureTyped(keys=keys, dtype=np.float32, device=self.device),
         ]
 
         if "label" in keys:
             xforms.insert(1, AddChanneld(keys="label"))
 
-        # resample
         if spacing:
             xforms.append(Spacingd(keys=keys, pixdim=spacing))
 
-        # add augmentation
-        if train:
-            xforms.extend(
-                [
-                    RandFlipd(keys=keys, prob=0.2, spatial_axis=a)
-                    for a in range(self.spatial_dims)
-                ]
-            )
+        return Compose(xforms)
 
-            if self.intensity_augmentation:
-                xforms.extend(
-                    [
-                        RandAdjustContrastd(keys="image", prob=0.2, gamma=(0.5, 4.5)),
-                        RandHistogramShiftd(
-                            keys="image", prob=0.2, num_control_points=10
-                        ),
-                        RandGibbsNoised(keys="image", prob=0.2, alpha=(0.0, 1.0)),
-                        RandKSpaceSpikeNoised(keys="image", global_prob=0.1, prob=0.2),
-                    ]
-                )
-
-            if self.spatial_augmentation:
-                mode = ["nearest" if k == "label" else "bilinear" for k in keys]
-                xforms.append(RandRotated(keys=keys, prob=0.2, range_z=0.4, mode=mode))
-                if self.spatial_dims > 2:
-                    xforms.append(
-                        RandRotated(keys=keys, prob=0.2, range_x=0.4, mode=mode)
-                    )
-                    xforms.append(
-                        RandRotated(keys=keys, prob=0.2, range_y=0.4, mode=mode)
-                    )
-
-                mode = ["nearest" if k == "label" else "area" for k in keys]
-                xforms.append(
-                    RandZoomd(
-                        keys=keys, prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=mode
-                    )
-                )
-
-            xforms.append(
-                RandCropByLabelClassesd(
-                    keys=keys,
-                    label_key="label",
-                    spatial_size=self.spatial_size,
-                    num_classes=self.num_classes,
-                    num_samples=4,
-                )
-            )
-        return Compose(xforms + [EnsureTyped(keys=keys, dtype=np.float32)])
+    def default_augmentation(self, keys: List[str]):
+        return RandCropByLabelClassesd(
+            keys=keys,
+            label_key="label",
+            image_key="image",
+            spatial_size=self.spatial_size,
+            num_classes=self.num_classes,
+            num_samples=4,
+        )
 
     def forward(self, x):
         return self._model(x)
@@ -187,30 +142,46 @@ class Net(pl.LightningModule):
         set_determinism(seed=0)
 
         # define the data transforms
-        if self.pre_processing_train_config:
-            parser = ConfigParser(self.pre_processing_train_config)
-            parser.parse(True)
-            train_transforms = parser.get_parsed_content("pre_processing_train")
-        else:
-            train_transforms = self.create_transforms(
-                keys=["image", "label"],
-                train=True,
+        preprocessing = None
+        if self.config_preprocessing:
+            parser = ConfigParser(
+                {
+                    "image_key": "image",
+                    "label_key": "label",
+                    "preprocessing": self.config_preprocessing,
+                }
             )
-        val_transforms = self.create_transforms(
-            keys=["image", "label"],
-            train=False,
-        )
+            parser.parse(True)
+            preprocessing = parser.get_parsed_content("preprocessing")
+        if not preprocessing:
+            print("Using default preprocessing")
+            preprocessing = self.default_preprocessing(keys=["image", "label"])
+
+        augmentation = None
+        if self.config_augmentation:
+            parser = ConfigParser(
+                {
+                    "image_key": "image",
+                    "label_key": "label",
+                    "augmentation": self.config_augmentation,
+                }
+            )
+            parser.parse(True)
+            augmentation = parser.get_parsed_content("augmentation")
+        if not augmentation:
+            print("Using default augmentation")
+            augmentation = self.default_augmentation(keys=["image", "label"])
 
         # we use cached datasets - these are 10x faster than regular datasets
         self.train_ds = CacheDataset(
             data=self.dataset.training_files(),
-            transform=train_transforms,
+            transform=Compose((preprocessing, augmentation)).flatten(),
             cache_rate=self.cache_rate,
             num_workers=0,
         )
         self.val_ds = CacheDataset(
             data=self.dataset.validation_files(),
-            transform=val_transforms,
+            transform=Compose(preprocessing).flatten(),
             cache_rate=self.cache_rate,
             num_workers=0,
         )
@@ -272,7 +243,7 @@ class Net(pl.LightningModule):
             self.best_val_epoch = self.current_epoch
         print(
             f"\ncurrent epoch: {self.current_epoch} "
-            f"current mean dice: {mean_val_dice:.4f}"
+            f"mean val dice: {mean_val_dice:.4f}"
             f"\nbest mean dice: {self.best_val_dice:.4f} "
             f"at epoch: {self.best_val_epoch}"
         )
@@ -283,17 +254,17 @@ class Net(pl.LightningModule):
 
 def train(
     *,
-    dataset: Union[Path, List[Path]] = None,
+    dataset: Union[Path, List[Path]] = [],
     image_dir: Path = None,
     labels_dir: Path = None,
-    tissue_list: Path = Path(),
-    output_dir: Path = Path(),
+    tissue_list: Path,
+    output_dir: Path,
     checkpoint_file: Path = None,
     num_channels: int = 1,
     spatial_dims: int = 3,
     spatial_size: Sequence[int] = None,
-    pre_processing: dict = None,
-    post_processing: str = None,
+    preprocessing: dict = None,
+    augmentation: dict = None,
     augment_intensity: bool = False,
     augment_spatial: bool = False,
     max_epochs: int = 600,
@@ -331,7 +302,8 @@ def train(
         raise ValueError(
             "Either provide a dataset file, or an image_dir, labels_dir pair."
         )
-    net.pre_processing_train_config = pre_processing
+    net.config_preprocessing = preprocessing
+    net.config_augmentation = augmentation
     net.intensity_augmentation = augment_intensity
     net.spatial_augmentation = augment_spatial
     net.cache_rate = cache_rate
