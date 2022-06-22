@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from monai.bundle import ConfigParser
 from monai.transforms import Compose
 from typer.testing import CliRunner
@@ -36,6 +37,14 @@ def test_load_empty_preprocessing():
     transforms = parser.get_parsed_content("preprocessing")
     assert isinstance(transforms, dict)
     assert len(transforms) == 0
+
+
+def test_load_not_existing_preprocessing():
+    parser = ConfigParser({"image_key": "image"})
+    parser.parse(True)
+    with pytest.raises(KeyError):
+        _ = parser.get_parsed_content("preprocessing")
+    assert "preprocessing" not in parser
 
 
 def test_load_disabled_preprocessing():
