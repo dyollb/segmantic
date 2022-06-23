@@ -73,13 +73,13 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -e segmantic_src
-    - name: Test
-      working-directory: segmantic_src
-      run: |
-        pip install pytest
-        pytest tests
+    - name: Pip install dev
+      run: pip install -e "segmantic_src[dev]"
     - name: Static analysis
       working-directory: segmantic_src
-      run: |
-        pip install mypy
-        mypy .
+      run: mypy .
+    - name: Test
+      working-directory: segmantic_src
+      run: pytest --cov segmantic
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3

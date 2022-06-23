@@ -43,10 +43,12 @@ test = [
 ]
 dev = [
   "black",
+  "coverage",
   "flake8",
   "isort",
   "mypy",
-  "pre-commit"
+  "pre-commit",
+  "pytest-cov"
 ]
 
 [project.urls]
