@@ -39,6 +39,7 @@ repos:
     rev: 0.7.14
     hooks:
       - id: mdformat
+        name: format markdown
         additional_dependencies:
           - mdformat-gfm
           - mdformat_frontmatter
@@ -48,25 +49,28 @@ repos:
     rev: 4.0.1
     hooks:
       - id: flake8
-        args: ["--ignore=E501,W503,E203"]
         name: check PEP8
+        args: ["--ignore=E501,W503,E203"]
 
   - repo: https://github.com/asottile/pyupgrade
     rev: v2.34.0
     hooks:
       - id: pyupgrade
+        name: upgrade code
 
   - repo: https://github.com/hadialqattan/pycln
     rev: v1.2.5
     hooks:
       - id: pycln
-        args: [--all, --expand-stars]
         name: prune imports
+        args: [--expand-stars]
 
   - repo: https://github.com/nbQA-dev/nbQA
     rev: 1.3.1
     hooks:
-     - id: nbqa-black
-       additional_dependencies: [black]
-     - id: nbqa-mypy
-       additional_dependencies: [mypy]
+      - id: nbqa-black
+        additional_dependencies: [black]
+        name: format notebooks
+      - id: nbqa-mypy
+        additional_dependencies: [mypy]
+        name: static analysis for notebooks
