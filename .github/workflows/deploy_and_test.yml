@@ -80,6 +80,15 @@ jobs:
       run: mypy .
     - name: Test
       working-directory: segmantic_src
-      run: pytest --cov segmantic
+      run: pytest --cov=segmantic --cov-report=xml
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
+      with:
+        directory: ./coverage/reports/
+        env_vars: OS,PYTHON
+        fail_ci_if_error: true
+        files: ./coverage1.xml,./coverage2.xml
+        flags: unittests
+        name: codecov-umbrella
+        path_to_write_report: ./coverage/codecov_report.txt
+        verbose: true
