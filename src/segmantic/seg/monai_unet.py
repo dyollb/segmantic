@@ -110,7 +110,7 @@ class Net(pl.LightningModule):
             Orientationd(keys=keys, axcodes="RAS"),
             NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
             CropForegroundd(keys=keys, source_key="image"),
-            EnsureTyped(keys=keys, dtype=np.float32, device=self.device),
+            EnsureTyped(keys=keys, dtype=np.float32, device=torch.device(self.device)),
         ]
 
         if "label" in keys:
