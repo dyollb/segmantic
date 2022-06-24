@@ -3,7 +3,7 @@ from pathlib import Path
 
 import typer
 
-from segmantic.util.encoders import PathEncoder
+from segmantic.util.json import PathEncoder
 
 
 def generate_dataset(

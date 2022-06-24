@@ -9,7 +9,7 @@ import yaml
 
 from ..prepro.labels import load_tissue_list
 from ..seg import monai_unet
-from ..util.encoders import PathEncoder
+from ..util.json import PathEncoder
 
 app = typer.Typer()
 
@@ -34,7 +34,7 @@ def _get_dumper():
 def _get_nifti_files(dir: Path) -> List[Path]:
     if not dir:
         return []
-    return sorted([f for f in dir.glob("*.nii.gz")])
+    return sorted(f for f in dir.glob("*.nii.gz"))
 
 
 @app.command()

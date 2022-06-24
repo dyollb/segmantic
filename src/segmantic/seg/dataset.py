@@ -1,10 +1,9 @@
-import random
 import json
-
+import random
 from pathlib import Path
-from typing import Any, List, Dict, Sequence, Union
+from typing import Dict, List, Sequence, Union
 
-from ..util.encoders import PathEncoder
+from ..util.json import PathEncoder
 
 
 class PairedDataSet(object):
