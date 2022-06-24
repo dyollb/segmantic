@@ -29,7 +29,13 @@ from monai.transforms import (
     LoadImaged,
     NormalizeIntensityd,
     Orientationd,
+    RandAdjustContrastd,
     RandCropByLabelClassesd,
+    RandGibbsNoised,
+    RandHistogramShiftd,
+    RandKSpaceSpikeNoised,
+    RandRotated,
+    RandZoomd,
     SaveImaged,
 )
 from monai.transforms.spatial.dictionary import Spacingd
@@ -122,14 +128,39 @@ class Net(pl.LightningModule):
         return Compose(xforms)
 
     def default_augmentation(self, keys: List[str]):
-        return RandCropByLabelClassesd(
-            keys=keys,
-            label_key="label",
-            image_key="image",
-            spatial_size=self.spatial_size,
-            num_classes=self.num_classes,
-            num_samples=4,
+        xforms = []
+
+        if self.intensity_augmentation:
+            xforms += [
+                RandAdjustContrastd(keys="image", prob=0.2, gamma=(0.5, 4.5)),
+                RandHistogramShiftd(keys="image", prob=0.2, num_control_points=10),
+                RandGibbsNoised(keys="image", prob=0.2, alpha=(0.0, 1.0)),
+                RandKSpaceSpikeNoised(keys="image", global_prob=0.1, prob=0.2),
+            ]
+
+        if self.spatial_augmentation:
+            mode = ["nearest" if k == "label" else "bilinear" for k in keys]
+            xforms.append(RandRotated(keys=keys, prob=0.2, range_z=0.4, mode=mode))
+            if self.spatial_dims > 2:
+                xforms.append(RandRotated(keys=keys, prob=0.2, range_x=0.4, mode=mode))
+                xforms.append(RandRotated(keys=keys, prob=0.2, range_y=0.4, mode=mode))
+
+            mode = ["nearest" if k == "label" else "area" for k in keys]
+            xforms.append(
+                RandZoomd(keys=keys, prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=mode)
+            )
+
+        xforms.append(
+            RandCropByLabelClassesd(
+                keys=keys,
+                label_key="label",
+                image_key="image",
+                spatial_size=self.spatial_size,
+                num_classes=self.num_classes,
+                num_samples=4,
+            )
         )
+        return Compose(xforms)
 
     def forward(self, x):
         return self._model(x)
