@@ -17,7 +17,7 @@ def main(input_file: Path, output_file: Path):
     if output_file.suffix == ".json":
         output_file.write_text(json.dumps(options))
     elif output_file.suffix == ".yml":
-        output_file.write_text(yaml.safe_dump(options))
+        output_file.write_text(yaml.safe_dump(options, sort_keys=False))
     else:
         raise RuntimeError(f"Cannot read {output_file}. Unsupported file type.")
 
