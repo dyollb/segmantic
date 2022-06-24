@@ -42,4 +42,4 @@ def validate_args(
     return valid_args
 
 
-__all__ = ["get_default_args", "validate_args"]
+__all__ = ("get_default_args", "validate_args")
