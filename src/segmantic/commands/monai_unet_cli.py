@@ -1,28 +1,23 @@
-import json
 import inspect
-import typer
+import json
+from functools import partial
 from pathlib import Path
 from typing import List
 
-from ..util.encoders import PathEncoder
+import typer
+import yaml
+
 from ..prepro.labels import load_tissue_list
 from ..seg import monai_unet
+from ..util.cli import get_default_args, validate_args
 
 app = typer.Typer()
-
-
-def _is_path(param: inspect.Parameter) -> bool:
-    if param.annotation != inspect.Parameter.empty and inspect.isclass(
-        param.annotation
-    ):
-        return issubclass(param.annotation, Path)
-    return False
 
 
 def _get_nifti_files(dir: Path) -> List[Path]:
     if not dir:
         return []
-    return sorted([f for f in dir.glob("*.nii.gz")])
+    return sorted(f for f in dir.glob("*.nii.gz"))
 
 
 @app.command()
@@ -71,24 +66,26 @@ def train_config(
     """
     sig = inspect.signature(monai_unet.train)
 
+    is_json = config_file and config_file.suffix.lower() == ".json"
+    dumps = (
+        partial(json.dumps, indent=4)
+        if is_json
+        else partial(yaml.safe_dump, sort_keys=False)
+    )
+    loads = json.loads if is_json else yaml.safe_load
+
     if print_defaults:
-        default_args = {
-            k: v.default
-            if v.default is not inspect.Parameter.empty
-            else f"<required option: {v.annotation.__name__}>"
-            for k, v in sig.parameters.items()
-        }
+        default_args = get_default_args(signature=sig)
         if config_file:
-            config_file.write_text(json.dumps(default_args, indent=4, cls=PathEncoder))
-        print(json.dumps(default_args, indent=4, cls=PathEncoder))
+            config_file.write_text(dumps(default_args))
+        else:
+            print(dumps(default_args))
         return
-    elif not config_file:
+
+    if not config_file:
         raise ValueError("Invalid '--config-file' argument")
 
-    cast_path = lambda v, k: Path(v) if v and _is_path(sig.parameters[k]) else v
-
-    args: dict = json.loads(config_file.read_text())
-    args = {k: cast_path(v, k) for k, v in args.items()}
+    args: dict = validate_args(loads(config_file.read_text()), signature=sig)
     monai_unet.train(**args)
 
 
@@ -127,7 +124,6 @@ def train(
         num_channels=num_channels,
         max_epochs=max_epochs,
         output_dir=output_dir,
-        save_nifti=True,
         gpu_ids=gpu_ids,
     )
 

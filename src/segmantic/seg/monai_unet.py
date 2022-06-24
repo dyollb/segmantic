@@ -3,13 +3,13 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Union
 
-import matplotlib.pyplot as plt
 import numpy as np
+import pytorch_lightning as pl
 import torch
 import torch.utils.data
-import pytorch_lightning as pl
+from monai.bundle import ConfigParser
 from monai.config import print_config
-from monai.data import CacheDataset, NiftiSaver, decollate_batch, list_data_collate
+from monai.data import CacheDataset, decollate_batch, list_data_collate
 from monai.inferers import sliding_window_inference
 from monai.losses import DiceLoss
 from monai.metrics import ConfusionMatrixMetric, DiceMetric
@@ -49,12 +49,14 @@ from ..prepro.labels import load_tissue_list
 from .dataset import PairedDataSet
 from .evaluation import confusion_matrix
 from .utils import make_device
-from .visualization import make_tissue_cmap, plot_confusion_matrix
+from .visualization import plot_confusion_matrix
 
 
 class Net(pl.LightningModule):
     dataset: Optional[PairedDataSet]
     cache_rate: float = 1.0
+    config_preprocessing: dict = {}
+    config_augmentation: dict = {}
     intensity_augmentation: bool = False
     spatial_augmentation: bool = False
     best_val_dice = 0
@@ -103,77 +105,66 @@ class Net(pl.LightningModule):
     def spatial_dims(self):
         return self._model.dimensions
 
-    def create_transforms(
+    def default_preprocessing(
         self,
         keys: List[str],
-        train: bool = False,
         spacing: Sequence[float] = None,
     ) -> Transform:
-        # loading and normalization
+
         xforms = [
             LoadImaged(keys=keys, reader="itkreader"),
             EnsureChannelFirstd(keys="image"),
             Orientationd(keys=keys, axcodes="RAS"),
             NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
             CropForegroundd(keys=keys, source_key="image"),
+            EnsureTyped(keys=keys, dtype=np.float32, device=torch.device(self.device)),
         ]
 
         if "label" in keys:
             xforms.insert(1, AddChanneld(keys="label"))
 
-        # resample
         if spacing:
             xforms.append(Spacingd(keys=keys, pixdim=spacing))
 
-        # add augmentation
-        if train:
-            xforms.extend(
-                [
-                    RandFlipd(keys=keys, prob=0.2, spatial_axis=a)
-                    for a in range(self.spatial_dims)
-                ]
-            )
+        return Compose(xforms)
 
-            if self.intensity_augmentation:
-                xforms.extend(
-                    [
-                        RandAdjustContrastd(keys="image", prob=0.2, gamma=(0.5, 4.5)),
-                        RandHistogramShiftd(
-                            keys="image", prob=0.2, num_control_points=10
-                        ),
-                        RandGibbsNoised(keys="image", prob=0.2, alpha=(0.0, 1.0)),
-                        RandKSpaceSpikeNoised(keys="image", global_prob=0.1, prob=0.2),
-                    ]
-                )
+    def default_augmentation(self, keys: List[str]):
+        xforms: List[Transform] = [
+            RandFlipd(keys=keys, prob=0.2, spatial_axis=a)
+            for a in range(self.spatial_dims)
+        ]
 
-            if self.spatial_augmentation:
-                mode = ["nearest" if k == "label" else "bilinear" for k in keys]
-                xforms.append(RandRotated(keys=keys, prob=0.2, range_z=0.4, mode=mode))
-                if self.spatial_dims > 2:
-                    xforms.append(
-                        RandRotated(keys=keys, prob=0.2, range_x=0.4, mode=mode)
-                    )
-                    xforms.append(
-                        RandRotated(keys=keys, prob=0.2, range_y=0.4, mode=mode)
-                    )
+        if self.intensity_augmentation:
+            xforms += [
+                RandAdjustContrastd(keys="image", prob=0.2, gamma=(0.5, 4.5)),
+                RandHistogramShiftd(keys="image", prob=0.2, num_control_points=10),
+                RandGibbsNoised(keys="image", prob=0.2, alpha=(0.0, 1.0)),
+                RandKSpaceSpikeNoised(keys="image", global_prob=0.1, prob=0.2),
+            ]
 
-                mode = ["nearest" if k == "label" else "area" for k in keys]
-                xforms.append(
-                    RandZoomd(
-                        keys=keys, prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=mode
-                    )
-                )
+        if self.spatial_augmentation:
+            mode = ["nearest" if k == "label" else "bilinear" for k in keys]
+            xforms.append(RandRotated(keys=keys, prob=0.2, range_z=0.4, mode=mode))
+            if self.spatial_dims > 2:
+                xforms.append(RandRotated(keys=keys, prob=0.2, range_x=0.4, mode=mode))
+                xforms.append(RandRotated(keys=keys, prob=0.2, range_y=0.4, mode=mode))
 
+            mode = ["nearest" if k == "label" else "area" for k in keys]
             xforms.append(
-                RandCropByLabelClassesd(
-                    keys=keys,
-                    label_key="label",
-                    spatial_size=self.spatial_size,
-                    num_classes=self.num_classes,
-                    num_samples=4,
-                )
+                RandZoomd(keys=keys, prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=mode)
             )
-        return Compose(xforms + [EnsureTyped(keys=keys, dtype=np.float32)])
+
+        xforms.append(
+            RandCropByLabelClassesd(
+                keys=keys,
+                label_key="label",
+                image_key="image",
+                spatial_size=self.spatial_size,
+                num_classes=self.num_classes,
+                num_samples=4,
+            )
+        )
+        return Compose(xforms)
 
     def forward(self, x):
         return self._model(x)
@@ -186,25 +177,46 @@ class Net(pl.LightningModule):
         set_determinism(seed=0)
 
         # define the data transforms
-        train_transforms = self.create_transforms(
-            keys=["image", "label"],
-            train=True,
-        )
-        val_transforms = self.create_transforms(
-            keys=["image", "label"],
-            train=False,
-        )
+        preprocessing = None
+        if self.config_preprocessing:
+            parser = ConfigParser(
+                {
+                    "image_key": "image",
+                    "label_key": "label",
+                    "preprocessing": self.config_preprocessing,
+                }
+            )
+            parser.parse(True)
+            preprocessing = parser.get_parsed_content("preprocessing")
+        if not preprocessing:
+            print("Using default preprocessing")
+            preprocessing = self.default_preprocessing(keys=["image", "label"])
+
+        augmentation = None
+        if self.config_augmentation:
+            parser = ConfigParser(
+                {
+                    "image_key": "image",
+                    "label_key": "label",
+                    "augmentation": self.config_augmentation,
+                }
+            )
+            parser.parse(True)
+            augmentation = parser.get_parsed_content("augmentation")
+        if not augmentation:
+            print("Using default augmentation")
+            augmentation = self.default_augmentation(keys=["image", "label"])
 
         # we use cached datasets - these are 10x faster than regular datasets
         self.train_ds = CacheDataset(
             data=self.dataset.training_files(),
-            transform=train_transforms,
+            transform=Compose((preprocessing, augmentation)).flatten(),
             cache_rate=self.cache_rate,
             num_workers=0,
         )
         self.val_ds = CacheDataset(
             data=self.dataset.validation_files(),
-            transform=val_transforms,
+            transform=Compose(preprocessing).flatten(),
             cache_rate=self.cache_rate,
             num_workers=0,
         )
@@ -266,7 +278,7 @@ class Net(pl.LightningModule):
             self.best_val_epoch = self.current_epoch
         print(
             f"\ncurrent epoch: {self.current_epoch} "
-            f"current mean dice: {mean_val_dice:.4f}"
+            f"mean val dice: {mean_val_dice:.4f}"
             f"\nbest mean dice: {self.best_val_dice:.4f} "
             f"at epoch: {self.best_val_epoch}"
         )
@@ -277,42 +289,42 @@ class Net(pl.LightningModule):
 
 def train(
     *,
-    dataset: Union[Path, List[Path]] = None,
+    dataset: Union[Path, List[Path]] = [],
     image_dir: Path = None,
     labels_dir: Path = None,
-    tissue_list: Path = Path(),
-    output_dir: Path = Path(),
+    output_dir: Path,
     checkpoint_file: Path = None,
+    num_classes: int = 0,
     num_channels: int = 1,
     spatial_dims: int = 3,
     spatial_size: Sequence[int] = None,
-    max_epochs: int = 600,
+    preprocessing: dict = None,
+    augmentation: dict = None,
     augment_intensity: bool = False,
     augment_spatial: bool = False,
+    max_epochs: int = 600,
     mixed_precision: bool = True,
     cache_rate: float = 1.0,
-    save_nifti: bool = True,
     gpu_ids: List[int] = [0],
+    tissue_list: Path = None,
 ) -> pl.LightningModule:
 
-    print_config()
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(exist_ok=True)
-    log_dir = output_dir / "logs"
-
-    tissue_dict = load_tissue_list(tissue_list)
-    num_classes = max(tissue_dict.values()) + 1
-    if len(tissue_dict) != num_classes:
-        raise ValueError("Expecting contiguous labels in range [0,N-1]")
-
-    device = make_device(gpu_ids)
-
-    """Run the training"""
     # initialise the LightningModule
     if checkpoint_file and Path(checkpoint_file).exists():
         net = Net.load_from_checkpoint(f"{checkpoint_file}")
     else:
+        if num_classes > 0 and tissue_list:
+            raise ValueError(
+                "'num_classes' and 'tissue_list' are redundant. Prefer 'num_classes'."
+            )
+        if tissue_list:
+            tissue_dict = load_tissue_list(tissue_list)
+            num_classes = max(tissue_dict.values()) + 1
+            if len(tissue_dict) != num_classes:
+                raise ValueError("Expecting contiguous labels in range [0,N-1]")
+        if num_classes <= 1:
+            raise ValueError("'num_classes' is expected to be > 1")
+
         net = Net(
             spatial_dims=spatial_dims,
             num_channels=num_channels,
@@ -327,11 +339,16 @@ def train(
         raise ValueError(
             "Either provide a dataset file, or an image_dir, labels_dir pair."
         )
+    net.config_preprocessing = preprocessing
+    net.config_augmentation = augmentation
     net.intensity_augmentation = augment_intensity
     net.spatial_augmentation = augment_spatial
     net.cache_rate = cache_rate
 
     # store dataset used for training
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+    log_dir = output_dir / "logs"
     (output_dir / "Dataset.json").write_text(net.dataset.dump_dataset())
 
     # set up loggers and checkpoints
@@ -344,9 +361,9 @@ def train(
         save_top_k=3,
     )
 
+    print_config()
+
     # initialise Lightning's trainer.
-    # other options:
-    #  - max_time={"days": 1, "hours": 5}
     trainer = pl.Trainer(
         gpus=gpu_ids,
         precision=16 if mixed_precision else 32,
@@ -364,51 +381,6 @@ def train(
         f"at epoch {net.best_val_epoch}"
     )
 
-    """## View training in tensorboard"""
-
-    # Commented out IPython magic to ensure Python compatibility.
-    # %load_ext tensorboard
-    # %tensorboard --logdir=log_dir
-
-    """## Check best model output with the input image and label"""
-    if save_nifti:
-        os.makedirs(output_dir, exist_ok=True)
-        saver = NiftiSaver(output_dir=output_dir, separate_folder=False, resample=False)
-
-    net.eval()
-    net.to(device)
-    with torch.no_grad():
-        cmap = make_tissue_cmap(tissue_list)
-
-        for i, val_data in enumerate(net.val_dataloader()):
-            roi_size = (160, 160, 160)
-            sw_batch_size = 4
-            val_outputs = sliding_window_inference(
-                val_data["image"].to(device), roi_size, sw_batch_size, net
-            )
-            assert isinstance(val_outputs, torch.Tensor)
-
-            plt.figure("check", (18, 6))
-            for row, slice in enumerate([80, 180]):
-                plt.subplot(2, 3, 1 + row * 3)
-                plt.title(f"image {i}")
-                plt.imshow(val_data["image"][0, 0, :, :, slice], cmap="gray")
-                plt.subplot(2, 3, 2 + row * 3)
-                plt.title(f"label {i}")
-                plt.imshow(val_data["label"][0, 0, :, :, slice], cmap=cmap)
-                plt.subplot(2, 3, 3 + row * 3)
-                plt.title(f"output {i}")
-                plt.imshow(
-                    torch.argmax(val_outputs, dim=1).detach().cpu()[0, :, :, slice],
-                    cmap=cmap,
-                )
-            plot_file_path = output_dir / f"drcmr{num_classes:02d}_case{i}.png"
-            plt.savefig(f"{plot_file_path}")
-
-            if saver:
-                pred_labels = val_outputs.argmax(dim=1, keepdim=True)
-                saver.save_batch(pred_labels, val_data["image_meta_dict"])
-
     return net
 
 
@@ -424,7 +396,7 @@ def predict(
     # load trained model
     model_settings_json = model_file.with_suffix(".json")
     if model_settings_json.exists():
-        print(f"Loading legacy model settings from {model_settings_json}")
+        print(f"WARNING: Loading legacy model settings from {model_settings_json}")
         with model_settings_json.open() as json_file:
             settings = json.load(json_file)
         net = Net.load_from_checkpoint(f"{model_file}", **settings)
@@ -432,6 +404,7 @@ def predict(
         net = Net.load_from_checkpoint(f"{model_file}")
     num_classes = net.num_classes
 
+    net.freeze()
     net.eval()
     device = make_device(gpu_ids)
     net.to(device)
@@ -478,23 +451,15 @@ def predict(
     post_transforms = Compose(
         [
             EnsureTyped(keys="pred"),
-            # Activationsd(keys="pred", sigmoid=True),
             Invertd(
-                keys="pred",  # invert the `pred` data field, also support multiple fields
+                keys="pred",
                 transform=pre_transforms,
-                orig_keys="image",  # get the previously applied pre_transforms information on the `img` data field,
-                # then invert `pred` based on this information. we can use same info
-                # for multiple fields, also support different orig_keys for different fields
-                meta_keys="pred_meta_dict",  # key field to save inverted meta data, every item maps to `keys`
-                orig_meta_keys="image_meta_dict",  # get the meta data from `img_meta_dict` field when inverting,
-                # for example, may need the `affine` to invert `Spacingd` transform,
-                # multiple fields can use the same meta data to invert
-                meta_key_postfix="meta_dict",  # if `meta_keys=None`, use "{keys}_{meta_key_postfix}" as the meta key,
-                # if `orig_meta_keys=None`, use "{orig_keys}_{meta_key_postfix}",
-                # otherwise, no need this arg during inverting
-                nearest_interp=False,  # don't change the interpolation mode to "nearest" when inverting transforms
-                # to ensure a smooth output, then execute `AsDiscreted` transform
-                to_tensor=True,  # convert to PyTorch Tensor after inverting
+                orig_keys="image",
+                meta_keys="pred_meta_dict",
+                orig_meta_keys="image_meta_dict",
+                meta_key_postfix="meta_dict",
+                nearest_interp=False,
+                to_tensor=True,
             ),
             AsDiscreted(keys="pred", argmax=True),
         ]

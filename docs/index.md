@@ -1,28 +1,33 @@
 # Segmantic
 
-Segmantic is a [PyTorch]-based library for medical image segmentation.
+Segmantic is a [MONAI]/[PyTorch]-based library for medical image segmentation.
 
 ## Features
 
-* utilities to prepare datasets for use in training of segmentation and style transfer networks
-* image to image translation (based on [pix2pix / cyclegan](https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix)) to help generalization from limited training data
-* segmentation networks
-* evaluation metrics (fast confusion matrix, [Hausdorff] distance, ...)
+- utilities to prepare datasets for use in training of segmentation and style transfer networks
+- segmentation networks
+- evaluation metrics (fast confusion matrix, [Hausdorff] distance, ...)
+- image to image translation (based on [pix2pix / cyclegan](https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix)) to help generalization from limited training data
 
 ## Installation
 
 Create a virtal environment
+
 ```
 cd /your/working/directory
 python -m venv .venv
 ```
+
 Activate it using e.g. `source .venv/bin/activate` on Linux/Mac and `.venv\Scripts\activate.bat` on Windows.
 
 To install this repo (this will install all dependencies):
+
 ```
 pip install git+https://github.com/dyollb/segmantic.git#egg=segmantic
 ```
+
 Or in edit/dev mode
+
 ```
 pip install -e git+https://github.com/dyollb/segmantic.git#egg=segmantic[dev]
 ```
@@ -31,16 +36,21 @@ pip install -e git+https://github.com/dyollb/segmantic.git#egg=segmantic[dev]
 
 The project layout is as follows:
 
-    setup.py
-    src/segmantic
-        prepro/     # module containing utils to prepare your data
-        i2i/        # image-to-image translation (style transfer)
-        seg/        # semantic segmentation: training, inference and evaluation
-    scripts/
-    tests/
+```
+setup.py
+src/segmantic
+    commands/   # command lines
+    i2i/        # image-to-image translation (style transfer)
+    prepro/     # module containing utils to prepare your data
+    seg/        # semantic segmentation: training, inference and evaluation
+    util/       # utility functions
 
+scripts/
+tests/
+```
 
 <!-- INVISIBLE REFERENCES BELOW THIS LINE. ORDER ALPHABETICALLY -->
 
-[Hausdorff]:https://en.wikipedia.org/wiki/Hausdorff_space
-[PyTorch]:https://pytorch.org/
+[hausdorff]: https://en.wikipedia.org/wiki/Hausdorff_space
+[monai]: https://monai.io/
+[pytorch]: https://pytorch.org/

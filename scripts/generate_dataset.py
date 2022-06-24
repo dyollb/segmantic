@@ -3,7 +3,7 @@ from pathlib import Path
 
 import typer
 
-from segmantic.util.encoders import PathEncoder
+from segmantic.util.json import PathEncoder
 
 
 def generate_dataset(
@@ -31,7 +31,7 @@ def generate_dataset(
         if key in labels_file:
             data_dicts.append({"image": p, "label": labels_file[key]})
 
-    print(f"Number of pairs: {len(data_dicts)}")
+    print(f"Number of pairs: {len(data_dicts)}\n")
 
     json_text = json.dumps(
         {
