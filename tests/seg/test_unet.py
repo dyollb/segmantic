@@ -7,8 +7,18 @@ from monai.transforms import Compose
 from typer.testing import CliRunner
 
 from segmantic.commands.monai_unet_cli import app
+from segmantic.seg.monai_unet import Net
 
 runner = CliRunner()
+
+
+def test_Net_hyperparameters():
+
+    net = Net(num_classes=3, num_channels=4, spatial_dims=2, spatial_size=[64] * 2)
+    assert net.hparams.num_classes == 3
+    assert net.hparams.num_channels == 4
+    assert net.hparams.spatial_dims == 2
+    assert net.hparams.spatial_size == [64] * 2
 
 
 def test_print_defaults():
