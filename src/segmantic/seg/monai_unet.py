@@ -10,7 +10,7 @@ import torch.utils.data
 from monai.bundle import ConfigParser
 from monai.config import print_config
 from monai.data import CacheDataset, decollate_batch, list_data_collate
-from monai.inferers import sliding_window_inference
+from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
 from monai.metrics import ConfusionMatrixMetric, DiceMetric
 from monai.networks.layers import Norm
@@ -108,7 +108,7 @@ class Net(pl.LightningModule):
     def default_preprocessing(
         self,
         keys: List[str],
-        spacing: Sequence[float] = None,
+        spacing: Sequence[float] = [],
     ) -> Transform:
 
         xforms = [
@@ -390,7 +390,7 @@ def predict(
     test_images: List[Path],
     test_labels: Optional[List[Path]] = None,
     tissue_dict: Dict[str, int] = None,
-    save_nifti: bool = True,
+    spacing: Sequence[float] = [],
     gpu_ids: list = [],
 ) -> None:
     # load trained model
@@ -409,7 +409,7 @@ def predict(
     device = make_device(gpu_ids)
     net.to(device)
 
-    # define data / data loader
+    # pre-processing transforms
     if test_labels:
         test_files = [
             {"image": i, "label": l} for i, l in zip(test_images, test_labels)
@@ -417,35 +417,10 @@ def predict(
     else:
         test_files = [{"image": i} for i in test_images]
 
-    pre_transforms = net.create_transforms(
+    pre_transforms = net.default_preprocessing(
         keys=["image", "label"] if test_labels else ["image"],
-        train=False,
-        spacing=(0.85, 0.85, 0.85),
+        spacing=spacing,
     )
-
-    test_ds = CacheDataset(
-        data=test_files,
-        transform=pre_transforms,
-        cache_rate=1.0,
-        num_workers=0,
-    )
-
-    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, num_workers=0)
-
-    # for saving output
-    save_transforms = []
-    if save_nifti:
-        os.makedirs(output_dir, exist_ok=True)
-        save_transforms.append(
-            SaveImaged(
-                keys="pred",
-                meta_keys="pred_meta_dict",
-                output_dir=output_dir,
-                output_postfix="seg",
-                resample=False,
-                separate_folder=False,
-            )
-        )
 
     # invert transforms (e.g. cropping)
     post_transforms = Compose(
@@ -462,9 +437,29 @@ def predict(
                 to_tensor=True,
             ),
             AsDiscreted(keys="pred", argmax=True),
+            SaveImaged(
+                keys="pred",
+                meta_keys="pred_meta_dict",
+                output_dir=output_dir,
+                output_postfix="seg",
+                resample=False,
+                separate_folder=False,
+            ),
         ]
-        + save_transforms
     )
+
+    # for saving output
+    os.makedirs(output_dir, exist_ok=True)
+
+    # define data / data loader
+    test_ds = CacheDataset(
+        data=test_files,
+        transform=pre_transforms,
+        cache_rate=1.0,
+        num_workers=0,
+    )
+
+    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, num_workers=0)
 
     # evaluate accuracy
     dice_metric = DiceMetric(
@@ -477,19 +472,20 @@ def predict(
     def to_one_hot(x):
         return one_hot(x, num_classes=num_classes, dim=0)
 
-    tissue_names = [""] * num_classes
+    tissue_names = [f"{id}" for id in range(num_classes)]
     if tissue_dict:
         for name in tissue_dict.keys():
             idx = tissue_dict[name]
             tissue_names[idx] = name
 
+    inferer = SlidingWindowInferer(
+        roi_size=net.spatial_size, sw_batch_size=4, device=device
+    )
+
     with torch.no_grad():
         for test_data in test_loader:
-            val_image = test_data["image"].to(device)
 
-            val_pred = sliding_window_inference(
-                inputs=val_image, roi_size=(96, 96, 96), sw_batch_size=4, predictor=net
-            )
+            val_pred = inferer(test_data["image"].to(device), net)
             assert isinstance(val_pred, torch.Tensor)
 
             test_data["pred"] = val_pred
@@ -511,9 +507,9 @@ def predict(
                 filename_or_obj = test_data["image_meta_dict"]["filename_or_obj"]
                 if filename_or_obj and isinstance(filename_or_obj, list):
                     filename_or_obj = filename_or_obj[0]
-                if filename_or_obj:
 
-                    base = Path(filename_or_obj).with_suffix("").name
+                if filename_or_obj:
+                    base = Path(filename_or_obj).stem.replace(".nii", "")
                     c = confusion_matrix(
                         num_classes=num_classes,
                         y_pred=val_pred.view(-1).cpu().numpy(),
