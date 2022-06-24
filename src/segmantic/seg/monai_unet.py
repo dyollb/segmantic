@@ -12,7 +12,7 @@ from monai.config import print_config
 from monai.data import CacheDataset, decollate_batch, list_data_collate
 from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
-from monai.metrics import ConfusionMatrixMetric, DiceMetric
+from monai.metrics import ConfusionMatrixMetric, CumulativeAverage, DiceMetric
 from monai.networks.layers import Norm
 from monai.networks.nets import UNet
 from monai.networks.utils import one_hot
@@ -461,13 +461,17 @@ def predict(
 
     test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, num_workers=0)
 
-    # evaluate accuracy
+    inferer = SlidingWindowInferer(
+        roi_size=net.spatial_size, sw_batch_size=4, device=device
+    )
+
+    # evaluate metrics
     dice_metric = DiceMetric(
         include_background=False, reduction="mean", get_not_nans=False
     )
-    conf_matrix = ConfusionMatrixMetric(
-        metric_name=["sensitivity", "specificity", "precision", "accuracy"]
-    )
+    confusion_metrics = ["sensitivity", "specificity", "precision", "accuracy"]
+    conf_matrix = ConfusionMatrixMetric(metric_name=confusion_metrics)
+    mean_class_dice = CumulativeAverage()
 
     def to_one_hot(x):
         return one_hot(x, num_classes=num_classes, dim=0)
@@ -478,9 +482,9 @@ def predict(
             idx = tissue_dict[name]
             tissue_names[idx] = name
 
-    inferer = SlidingWindowInferer(
-        roi_size=net.spatial_size, sw_batch_size=4, device=device
-    )
+    def print_table(header, vals, indent="\t"):
+        print(indent + "\t".join(header).expandtabs(30))
+        print(indent + "\t".join(f"{x}" for x in vals).expandtabs(30))
 
     with torch.no_grad():
         for test_data in test_loader:
@@ -496,13 +500,16 @@ def predict(
                 val_pred = val_pred.argmax(dim=1, keepdim=True)
                 val_labels = test_data["label"].to(device).long()
 
-                d = dice_metric(y_pred=to_one_hot(val_pred), y=to_one_hot(val_labels))
-                print("Class Dice = ", d)
-                print("Mean Dice = ", dice_metric.aggregate().item())
-                dice_metric.reset()
-
+                dice = dice_metric(
+                    y_pred=to_one_hot(val_pred), y=to_one_hot(val_labels)
+                )
+                mean_class_dice.append(dice)
                 conf_matrix(y_pred=to_one_hot(val_pred), y=to_one_hot(val_labels))
-                print("Conf. Matrix Metrics = ", conf_matrix.aggregate())
+
+                dice_np = dice.cpu().numpy()
+                print("Mean Dice: ", np.mean(dice_np))
+                print("Class Dice:")
+                print_table(tissue_names, np.squeeze(dice_np))
 
                 filename_or_obj = test_data["image_meta_dict"]["filename_or_obj"]
                 if filename_or_obj and isinstance(filename_or_obj, list):
@@ -520,3 +527,16 @@ def predict(
                         tissue_names,
                         file_name=output_dir / (base + "_confusion.png"),
                     )
+
+        if test_labels:
+            print("*" * 80)
+            print("Total Mean Dice: ", dice_metric.aggregate().item())
+            print("Total Class Dice:")
+            print_table(
+                tissue_names, np.squeeze(mean_class_dice.aggregate().cpu().numpy())
+            )
+            print("Total Conf. Matrix Metrics:")
+            print_table(
+                confusion_metrics,
+                (np.squeeze(x.cpu().numpy()) for x in conf_matrix.aggregate()),
+            )
