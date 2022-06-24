@@ -31,6 +31,7 @@ from monai.transforms import (
     Orientationd,
     RandAdjustContrastd,
     RandCropByLabelClassesd,
+    RandFlipd,
     RandGibbsNoised,
     RandHistogramShiftd,
     RandKSpaceSpikeNoised,
@@ -128,7 +129,10 @@ class Net(pl.LightningModule):
         return Compose(xforms)
 
     def default_augmentation(self, keys: List[str]):
-        xforms = []
+        xforms: List[Transform] = [
+            RandFlipd(keys=keys, prob=0.2, spatial_axis=a)
+            for a in range(self.spatial_dims)
+        ]
 
         if self.intensity_augmentation:
             xforms += [
