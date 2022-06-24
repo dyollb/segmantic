@@ -292,9 +292,9 @@ def train(
     dataset: Union[Path, List[Path]] = [],
     image_dir: Path = None,
     labels_dir: Path = None,
-    tissue_list: Path,
     output_dir: Path,
     checkpoint_file: Path = None,
+    num_classes: int = 0,
     num_channels: int = 1,
     spatial_dims: int = 3,
     spatial_size: Sequence[int] = None,
@@ -306,23 +306,25 @@ def train(
     mixed_precision: bool = True,
     cache_rate: float = 1.0,
     gpu_ids: List[int] = [0],
+    tissue_list: Path = None,
 ) -> pl.LightningModule:
-
-    print_config()
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(exist_ok=True)
-    log_dir = output_dir / "logs"
-
-    tissue_dict = load_tissue_list(tissue_list)
-    num_classes = max(tissue_dict.values()) + 1
-    if len(tissue_dict) != num_classes:
-        raise ValueError("Expecting contiguous labels in range [0,N-1]")
 
     # initialise the LightningModule
     if checkpoint_file and Path(checkpoint_file).exists():
         net = Net.load_from_checkpoint(f"{checkpoint_file}")
     else:
+        if num_classes > 0 and tissue_list:
+            raise ValueError(
+                "'num_classes' and 'tissue_list' are redundant. Prefer 'num_classes'."
+            )
+        if tissue_list:
+            tissue_dict = load_tissue_list(tissue_list)
+            num_classes = max(tissue_dict.values()) + 1
+            if len(tissue_dict) != num_classes:
+                raise ValueError("Expecting contiguous labels in range [0,N-1]")
+        if num_classes <= 1:
+            raise ValueError("'num_classes' is expected to be > 1")
+
         net = Net(
             spatial_dims=spatial_dims,
             num_channels=num_channels,
@@ -344,6 +346,9 @@ def train(
     net.cache_rate = cache_rate
 
     # store dataset used for training
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+    log_dir = output_dir / "logs"
     (output_dir / "Dataset.json").write_text(net.dataset.dump_dataset())
 
     # set up loggers and checkpoints
@@ -355,6 +360,8 @@ def train(
         dirpath=output_dir if output_dir else log_dir,
         save_top_k=3,
     )
+
+    print_config()
 
     # initialise Lightning's trainer.
     trainer = pl.Trainer(
