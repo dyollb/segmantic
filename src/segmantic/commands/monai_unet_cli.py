@@ -163,7 +163,6 @@ def predict(
         test_labels=_get_nifti_files(labels_dir),
         tissue_dict=load_tissue_list(tissue_list),
         output_dir=results_dir,
-        save_nifti=True,
         gpu_ids=gpu_ids,
     )
 

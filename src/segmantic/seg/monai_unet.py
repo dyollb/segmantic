@@ -10,9 +10,9 @@ import torch.utils.data
 from monai.bundle import ConfigParser
 from monai.config import print_config
 from monai.data import CacheDataset, decollate_batch, list_data_collate
-from monai.inferers import sliding_window_inference
+from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
-from monai.metrics import ConfusionMatrixMetric, DiceMetric
+from monai.metrics import ConfusionMatrixMetric, CumulativeAverage, DiceMetric
 from monai.networks.layers import Norm
 from monai.networks.nets import UNet
 from monai.networks.utils import one_hot
@@ -108,7 +108,7 @@ class Net(pl.LightningModule):
     def default_preprocessing(
         self,
         keys: List[str],
-        spacing: Sequence[float] = None,
+        spacing: Sequence[float] = [],
     ) -> Transform:
 
         xforms = [
@@ -390,7 +390,7 @@ def predict(
     test_images: List[Path],
     test_labels: Optional[List[Path]] = None,
     tissue_dict: Dict[str, int] = None,
-    save_nifti: bool = True,
+    spacing: Sequence[float] = [],
     gpu_ids: list = [],
 ) -> None:
     # load trained model
@@ -409,7 +409,7 @@ def predict(
     device = make_device(gpu_ids)
     net.to(device)
 
-    # define data / data loader
+    # pre-processing transforms
     if test_labels:
         test_files = [
             {"image": i, "label": l} for i, l in zip(test_images, test_labels)
@@ -417,35 +417,10 @@ def predict(
     else:
         test_files = [{"image": i} for i in test_images]
 
-    pre_transforms = net.create_transforms(
+    pre_transforms = net.default_preprocessing(
         keys=["image", "label"] if test_labels else ["image"],
-        train=False,
-        spacing=(0.85, 0.85, 0.85),
+        spacing=spacing,
     )
-
-    test_ds = CacheDataset(
-        data=test_files,
-        transform=pre_transforms,
-        cache_rate=1.0,
-        num_workers=0,
-    )
-
-    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, num_workers=0)
-
-    # for saving output
-    save_transforms = []
-    if save_nifti:
-        os.makedirs(output_dir, exist_ok=True)
-        save_transforms.append(
-            SaveImaged(
-                keys="pred",
-                meta_keys="pred_meta_dict",
-                output_dir=output_dir,
-                output_postfix="seg",
-                resample=False,
-                separate_folder=False,
-            )
-        )
 
     # invert transforms (e.g. cropping)
     post_transforms = Compose(
@@ -462,34 +437,59 @@ def predict(
                 to_tensor=True,
             ),
             AsDiscreted(keys="pred", argmax=True),
+            SaveImaged(
+                keys="pred",
+                meta_keys="pred_meta_dict",
+                output_dir=output_dir,
+                output_postfix="seg",
+                resample=False,
+                separate_folder=False,
+            ),
         ]
-        + save_transforms
     )
 
-    # evaluate accuracy
+    # for saving output
+    os.makedirs(output_dir, exist_ok=True)
+
+    # define data / data loader
+    test_ds = CacheDataset(
+        data=test_files,
+        transform=pre_transforms,
+        cache_rate=1.0,
+        num_workers=0,
+    )
+
+    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, num_workers=0)
+
+    inferer = SlidingWindowInferer(
+        roi_size=net.spatial_size, sw_batch_size=4, device=device
+    )
+
+    # evaluate metrics
     dice_metric = DiceMetric(
         include_background=False, reduction="mean", get_not_nans=False
     )
-    conf_matrix = ConfusionMatrixMetric(
-        metric_name=["sensitivity", "specificity", "precision", "accuracy"]
-    )
+    confusion_metrics = ["sensitivity", "specificity", "precision", "accuracy"]
+    conf_matrix = ConfusionMatrixMetric(metric_name=confusion_metrics)
+    mean_class_dice = CumulativeAverage()
 
     def to_one_hot(x):
         return one_hot(x, num_classes=num_classes, dim=0)
 
-    tissue_names = [""] * num_classes
+    tissue_names = [f"{id}" for id in range(num_classes)]
     if tissue_dict:
         for name in tissue_dict.keys():
             idx = tissue_dict[name]
             tissue_names[idx] = name
 
+    def print_table(header, vals, indent="\t"):
+        print(indent + "\t".join(header).expandtabs(30))
+        print(indent + "\t".join(f"{x}" for x in vals).expandtabs(30))
+
     with torch.no_grad():
         for test_data in test_loader:
-            val_image = test_data["image"].to(device)
 
-            val_pred = sliding_window_inference(
-                inputs=val_image, roi_size=(96, 96, 96), sw_batch_size=4, predictor=net
-            )
+            val_pred = inferer(test_data["image"].to(device), net)
             assert isinstance(val_pred, torch.Tensor)
 
             test_data["pred"] = val_pred
@@ -500,20 +500,23 @@ def predict(
                 val_pred = val_pred.argmax(dim=1, keepdim=True)
                 val_labels = test_data["label"].to(device).long()
 
-                d = dice_metric(y_pred=to_one_hot(val_pred), y=to_one_hot(val_labels))
-                print("Class Dice = ", d)
-                print("Mean Dice = ", dice_metric.aggregate().item())
-                dice_metric.reset()
-
+                dice = dice_metric(
+                    y_pred=to_one_hot(val_pred), y=to_one_hot(val_labels)
+                )
+                mean_class_dice.append(dice)
                 conf_matrix(y_pred=to_one_hot(val_pred), y=to_one_hot(val_labels))
-                print("Conf. Matrix Metrics = ", conf_matrix.aggregate())
+
+                dice_np = dice.cpu().numpy()
+                print("Mean Dice: ", np.mean(dice_np))
+                print("Class Dice:")
+                print_table(tissue_names, np.squeeze(dice_np))
 
                 filename_or_obj = test_data["image_meta_dict"]["filename_or_obj"]
                 if filename_or_obj and isinstance(filename_or_obj, list):
                     filename_or_obj = filename_or_obj[0]
-                if filename_or_obj:
 
-                    base = Path(filename_or_obj).with_suffix("").name
+                if filename_or_obj:
+                    base = Path(filename_or_obj).stem.replace(".nii", "")
                     c = confusion_matrix(
                         num_classes=num_classes,
                         y_pred=val_pred.view(-1).cpu().numpy(),
@@ -524,3 +527,16 @@ def predict(
                         tissue_names,
                         file_name=output_dir / (base + "_confusion.png"),
                     )
+
+        if test_labels:
+            print("*" * 80)
+            print("Total Mean Dice: ", dice_metric.aggregate().item())
+            print("Total Class Dice:")
+            print_table(
+                tissue_names, np.squeeze(mean_class_dice.aggregate().cpu().numpy())
+            )
+            print("Total Conf. Matrix Metrics:")
+            print_table(
+                confusion_metrics,
+                (np.squeeze(x.cpu().numpy()) for x in conf_matrix.aggregate()),
+            )
