@@ -29,13 +29,16 @@ def get_default_args(signature: inspect.Signature) -> Dict[str, Any]:
     return default_args
 
 
-def validate_args(args: Dict[str, Any], signature: inspect.Signature):
+def validate_args(
+    args: Dict[str, Any],
+    signature: inspect.Signature,
+):
     valid_args = {}
     for k in args:
         if k in signature.parameters:
             valid_args[k] = cast_to_path(args[k], signature.parameters[k])
         else:
-            print(f"WARNING: unexpected argument {k}")
+            raise ValueError(f"Unexpected argument {k}")
     return valid_args
 
 

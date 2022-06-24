@@ -9,26 +9,9 @@ import yaml
 
 from ..prepro.labels import load_tissue_list
 from ..seg import monai_unet
-from ..util.json import PathEncoder
+from ..util.cli import get_default_args, validate_args
 
 app = typer.Typer()
-
-
-def _is_path(param: inspect.Parameter) -> bool:
-    if param.annotation != inspect.Parameter.empty and inspect.isclass(
-        param.annotation
-    ):
-        return issubclass(param.annotation, Path)
-    return False
-
-
-def _get_dumper():
-    def _path_representer(dumper, data):
-        return dumper.represent_scalar("tag:yaml.org,2002:str", str(data))
-
-    dumper = yaml.Dumper
-    dumper.add_representer(Path, _path_representer)
-    return dumper
 
 
 def _get_nifti_files(dir: Path) -> List[Path]:
@@ -83,37 +66,26 @@ def train_config(
     """
     sig = inspect.signature(monai_unet.train)
 
-    format_is_json = config_file and config_file.suffix.lower() == ".json"
+    is_json = config_file and config_file.suffix.lower() == ".json"
     dumps = (
-        partial(json.dumps, cls=PathEncoder, indent=4)
-        if format_is_json
-        else partial(yaml.dump, Dumper=_get_dumper(), sort_keys=False)
+        partial(json.dumps, indent=4)
+        if is_json
+        else partial(yaml.safe_dump, sort_keys=False)
     )
-    loads = json.loads if format_is_json else yaml.safe_load
+    loads = json.loads if is_json else yaml.safe_load
 
     if print_defaults:
-        cast_from_path = (
-            lambda v, k: str(v) if v and _is_path(sig.parameters[k]) else v
-        )  # noqa: E731
-        default_args = {
-            k: cast_from_path(v.default, k)
-            if v.default is not inspect.Parameter.empty
-            else f"<required option: {v.annotation.__name__}>"
-            for k, v in sig.parameters.items()
-        }
+        default_args = get_default_args(signature=sig)
         if config_file:
             config_file.write_text(dumps(default_args))
-        print(dumps(default_args))
+        else:
+            print(dumps(default_args))
         return
-    elif not config_file:
+
+    if not config_file:
         raise ValueError("Invalid '--config-file' argument")
 
-    cast_to_path = (
-        lambda v, k: Path(v) if v and _is_path(sig.parameters[k]) else v
-    )  # noqa: E731
-
-    args: dict = loads(config_file.read_text())
-    args = {k: cast_to_path(v, k) for k, v in args.items()}
+    args: dict = validate_args(loads(config_file.read_text()), signature=sig)
     monai_unet.train(**args)
 
 
