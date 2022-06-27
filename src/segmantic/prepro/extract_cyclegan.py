@@ -1,22 +1,22 @@
 import os
-import numpy as np
-import itk
+from pathlib import Path
 from random import randint
 from typing import List, Tuple
-from pathlib import Path
+
+import itk
+import numpy as np
 
 from .core import (
+    Image2,
+    NdarrayImage,
     extract_slices,
-    resample,
-    scale_to_range,
-    identity,
     get_files,
+    identity,
     imread,
     imwrite,
-    AnyImage,
-    Image2,
+    resample,
+    scale_to_range,
 )
-from .modality import scale_clamp_ct
 
 
 def bbox(img: Image2) -> Tuple[float, float, float, float]:
@@ -93,7 +93,7 @@ def export_slices(  # type: ignore
             )
 
 
-def scale_to_uchar(img: AnyImage) -> AnyImage:
+def scale_to_uchar(img: NdarrayImage) -> NdarrayImage:
     return scale_to_range(img, vmin=0, vmax=255)
 
 
@@ -118,11 +118,12 @@ def randomize_files(dir: Path, ext: str = ".tif") -> None:
     import shutil
     from random import sample
 
-    random_sample = lambda x: sample(x, len(x))
+    def random_sample(x: List[Path]) -> List[Path]:
+        return sample(x, len(x))
 
     files = random_sample([f for f in dir.glob("*%s" % ext)])
     for i, f in enumerate(files):
-        shutil.move(f, dir / ("im_%05d.tif" % i))
+        shutil.move(f"{f}", dir / ("im_%05d.tif" % i))
 
 
 if __name__ == "__main__":

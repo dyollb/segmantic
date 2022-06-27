@@ -1,16 +1,17 @@
-import numpy as np
-import itk
 from typing import Dict
 
-from ..prepro.core import itkImage
+import itk
+import numpy as np
+
+from ..prepro.core import ImageNd
 
 
-def hausdorff_surface_distance(y_pred: itkImage, y_ref: itkImage) -> Dict[str, float]:
+def hausdorff_surface_distance(y_pred: ImageNd, y_ref: ImageNd) -> Dict[str, float]:
     """Compute symmetric surface distances between two binary masks
 
     Args:
-        y_pred (itkImage): predicted segmentation
-        y_ref (itkImage): reference segmentation
+        y_pred: predicted segmentation
+        y_ref: reference segmentation
 
     Returns:
         Dict[str, float]: keys are 'mean', 'median', 'std', 'max'
@@ -50,12 +51,12 @@ def hausdorff_surface_distance(y_pred: itkImage, y_ref: itkImage) -> Dict[str, f
     }
 
 
-def hausdorff_pointwise_distance(y_pred: itkImage, y_ref: itkImage) -> Dict[str, float]:
+def hausdorff_pointwise_distance(y_pred: ImageNd, y_ref: ImageNd) -> Dict[str, float]:
     """Compute symmetric point-wise distances between two binary masks
 
     Args:
-        y_pred (itkImage): predicted segmentation
-        y_ref (itkImage): reference segmentation
+        y_pred: predicted segmentation
+        y_ref: reference segmentation
 
     Returns:
         Dict[str, float]: keys are 'mean', 'median', 'std', 'max'
@@ -112,8 +113,8 @@ def confusion_matrix(num_classes: int, y_pred: np.ndarray, y: np.ndarray) -> np.
                 cm[y[i], y_pred[i]] += 1
             return cm
 
-        return _compute_confusion(num_classes, y_pred, y)
-    except:
+        return _compute_confusion(num_classes, y_pred, y)  # type: ignore
+    except ImportError:
         # fall back to naive approach
         cm = np.zeros((num_classes, num_classes))
         for t, p in zip(y_pred, y):

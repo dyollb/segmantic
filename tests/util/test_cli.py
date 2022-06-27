@@ -8,11 +8,11 @@ import yaml
 from segmantic.util.cli import get_default_args, is_path, validate_args
 
 
-def function1(file_path: Path, arg_int: int, arg_float: float = -1.5):
+def function1(path: Path, arg_int: int, arg_float: float = -1.5):
     pass
 
 
-def function2(arg_int: int, file_path: Path = None):
+def function2(arg_int: int, path: Path = None):
     pass
 
 
@@ -29,23 +29,23 @@ def test_get_default_args():
 
 
 def test_validate_args():
-    args1 = {"file_path": "/path/file.txt", "arg_int": 10, "arg_float": 5.0}
-    args1_skip_default = {"file_path": "/path/file.txt", "arg_int": 10}
-    args1_wrong_type = {"file_path": 23, "arg_int": 10, "arg_float": 5}
-    args2 = {"file_path": "/path/file.txt", "arg_int": 10}
-    args2_missing_arg = {"file_path": "/path/file.txt"}
-    args2_wrong_arg = {"file_path": "/path/file.txt", "arg_int": 10, "unknown": 42}
+    args1 = {"path": "/path/file.txt", "arg_int": 10, "arg_float": 5.0}, True
+    args1_skip_default = {"path": "/path/file.txt", "arg_int": 10}, True
+    args1_wrong_type = {"path": 23, "arg_int": 10, "arg_float": 5}, False
+    args2 = {"path": "/path/file.txt", "arg_int": 10}, True
+    args2_missing_arg = {"path": "/path/file.txt"}, False
+    args2_wrong_arg = {"path": "/path/file.txt", "arg_int": 10, "foo": 42}, False
 
     fun_args = {
         function1: (
-            (args1, True),
-            (args1_skip_default, True),
-            (args1_wrong_type, False),
+            args1,
+            args1_skip_default,
+            args1_wrong_type,
         ),
         function2: (
-            (args2, True),
-            (args2_missing_arg, False),
-            (args2_wrong_arg, False),
+            args2,
+            args2_missing_arg,
+            args2_wrong_arg,
         ),
     }
 
