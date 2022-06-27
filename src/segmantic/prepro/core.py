@@ -1,52 +1,63 @@
 import math
-import numpy as np
-import itk
 from pathlib import Path
-from typing import List, Optional, Sequence, Union, Callable
+from typing import Callable, List, Optional, Sequence, TypeVar, Union
+
+import itk
+import numpy as np
 
 # frequently used types
 from itk.itkImagePython import itkImageBase2 as Image2
 from itk.itkImagePython import itkImageBase3 as Image3
-from itk.support.types import ImageLike as AnyImage
 from itk.support.types import itkCType
 
-itkImage = Union[Image2, Image3]
-ImageOrArray = Union[Image2, Image3, np.ndarray]
+#: ImageAnyd: Union of Image2 and Image3 used for typing
+ImageAnyd = Union[Image2, Image3]
+
+# Generic type which can represent either an Image2 or an Image3
+# Unlike Union can create a dependence between parameter(s) / return(s)
+ImageNd = TypeVar("ImageNd", bound=ImageAnyd)
+
+#: NdarrayOrImage: Union of numpy.ndarray and Image2/Image3 to be used for typing
+NdarrayOrImage = Union[Image2, Image3, np.ndarray]
+
+# Generic type which can represent either a numpy.ndarray or an Image2/Image3
+# Unlike Union can create a dependence between parameter(s) / return(s)
+NdarrayImage = TypeVar("NdarrayImage", bound=NdarrayOrImage)
 
 _COLLAPSE_STRATEGY_SUBMATRIX = 2
 
 
-def identity(x: AnyImage) -> AnyImage:
+def identity(x: NdarrayImage) -> NdarrayImage:
     return x
 
 
-def as_image(x: AnyImage) -> AnyImage:
+def as_image(x: NdarrayOrImage) -> ImageAnyd:
     if isinstance(x, np.ndarray):
         return itk.image_view_from_array(x)
     return x
 
 
-def as_array(x: AnyImage) -> np.ndarray:
+def as_array(x: NdarrayOrImage) -> np.ndarray:
     if isinstance(x, np.ndarray):
         return x
-    return itk.array_from_image(x)
+    return itk.array_from_image(x)  # type: ignore
 
 
 def array_view_reverse_ordering(x: np.ndarray) -> np.ndarray:
     return x.transpose(np.flip(np.arange(len(x.shape))))
 
 
-def imread(filename: Path) -> itkImage:
+def imread(filename: Path) -> ImageAnyd:
     """Wrapper around itk.imread to avoid having to convert Path to str"""
     return itk.imread(f"{filename}")
 
 
-def imwrite(image: itkImage, filename: Path, compression: bool = False) -> None:
+def imwrite(image: ImageAnyd, filename: Path, compression: bool = False) -> None:
     """Wrapper around itk.imwrite to avoid having to convert Path to str"""
-    return itk.imwrite(image, f"{filename}", compression=compression)
+    itk.imwrite(image, f"{filename}", compression=compression)
 
 
-def pixeltype(image: itkImage) -> itkCType:
+def pixeltype(image: ImageAnyd) -> itkCType:
     """Get pixel type"""
     return itk.template(image)[1][0]
 
@@ -56,7 +67,7 @@ def make_image(
     spacing: Optional[Sequence[float]] = None,
     value: Union[int, float] = 0,
     pixel_type: itkCType = itk.UC,
-) -> itkImage:
+) -> ImageAnyd:
     """Create (2D/3D) image with specified shape and spacing"""
     dim = len(shape)
 
@@ -104,7 +115,9 @@ def extract_slices(img: Image3, axis: int = 2) -> List[Image2]:
     return slices
 
 
-def scale_to_range(img: AnyImage, vmin: float = 0.0, vmax: float = 255.0) -> AnyImage:
+def scale_to_range(
+    img: NdarrayImage, vmin: float = 0.0, vmax: float = 255.0
+) -> NdarrayImage:
     """Scale numpy itk.Image to fit in range [vmin,vmax]"""
     x_view = as_array(img)
     x_min, x_max = np.min(x_view), np.max(x_view)
@@ -114,7 +127,7 @@ def scale_to_range(img: AnyImage, vmin: float = 0.0, vmax: float = 255.0) -> Any
     return img
 
 
-def resample(img: itkImage, target_spacing: Optional[Sequence] = None) -> itkImage:
+def resample(img: ImageNd, target_spacing: Optional[Sequence] = None) -> ImageNd:
     """resample (2D/3D) image to a target spacing
 
     Args:
@@ -138,7 +151,7 @@ def resample(img: itkImage, target_spacing: Optional[Sequence] = None) -> itkIma
         spacing[d] = target_spacing[d]
 
     # resample to target resolution
-    resampled = itk.resample_image_filter(
+    resampled: ImageNd = itk.resample_image_filter(
         img,
         transform=transform,
         interpolator=interpolator,
@@ -150,7 +163,7 @@ def resample(img: itkImage, target_spacing: Optional[Sequence] = None) -> itkIma
     return resampled
 
 
-def resample_to_ref(img: itkImage, ref: itkImage) -> itkImage:
+def resample_to_ref(img: ImageNd, ref: ImageNd) -> ImageNd:
     """resample (2D/3D) image to a reference grid
 
     Args:
@@ -165,7 +178,7 @@ def resample_to_ref(img: itkImage, ref: itkImage) -> itkImage:
     transform = itk.IdentityTransform[itk.D, dim].New()
 
     # resample to target resolution
-    resampled = itk.resample_image_filter(
+    resampled: ImageNd = itk.resample_image_filter(
         img,
         transform=transform,
         interpolator=interpolator,
@@ -178,8 +191,8 @@ def resample_to_ref(img: itkImage, ref: itkImage) -> itkImage:
 
 
 def pad(
-    img: AnyImage, target_size: Sequence[int] = (256, 256), value: float = 0
-) -> AnyImage:
+    img: ImageNd, target_size: Sequence[int] = (256, 256), value: float = 0
+) -> ImageNd:
     """Pad (2D/3D) image to the target size"""
     size = itk.size(img)
     delta = [t - min(s, t) for s, t in zip(size, target_size)]
@@ -196,7 +209,7 @@ def pad(
     return img
 
 
-def crop_center(img: AnyImage, target_size: Sequence[int] = (256, 256)) -> AnyImage:
+def crop_center(img: ImageAnyd, target_size: Sequence[int] = (256, 256)) -> ImageAnyd:
     """Crop (2D/3D) image to the target size (centered)"""
     size = itk.size(img)
     delta = [max(s, t) - t for s, t in zip(size, target_size)]
@@ -215,8 +228,10 @@ def crop_center(img: AnyImage, target_size: Sequence[int] = (256, 256)) -> AnyIm
 
 
 def crop(
-    img: AnyImage, target_offset: Sequence[int], target_size: Sequence[int] = (256, 256)
-) -> AnyImage:
+    img: ImageAnyd,
+    target_offset: Sequence[int],
+    target_size: Sequence[int] = (256, 256),
+) -> ImageAnyd:
     """Crop (2D/3D) image to the target size/offset"""
     region = itk.region(img)
     region.SetIndex(target_offset)

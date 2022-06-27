@@ -1,13 +1,12 @@
-from numpy.lib.shape_base import tile
+from pathlib import Path
+from typing import Any, List, Sequence, Tuple, Union
+
+import itk
+import numpy as np
 import torch
 import torchvision.transforms as transforms
-import numpy as np
-import itk
-from typing import Any, List, Tuple, Sequence, Union
-from pathlib import Path
 
-from ..prepro.core import crop, make_image, pixeltype, Image3, Image2
-
+from ..prepro.core import Image2, Image3, crop, make_image, pixeltype
 from .pix2pix_cyclegan.models.networks import define_G
 
 Pix2PixGenerator = Any
@@ -112,10 +111,11 @@ def make_tiles(
         return [(0, 0)]
 
     # ensure we don't go over end
-    fix_tile = lambda start: (
-        max(min(start[0], size[0] - tile_size[0]), 0),
-        max(min(start[1], size[1] - tile_size[1]), 0),
-    )
+    def fix_tile(start):
+        return (
+            max(min(start[0], size[0] - tile_size[0]), 0),
+            max(min(start[1], size[1] - tile_size[1]), 0),
+        )
 
     tile_indices = []
     start = [0, 0]
@@ -205,7 +205,8 @@ def translate(
     """
     from PIL import Image
 
-    to_pil = lambda x: Image.fromarray(x).convert("RGB")
+    def to_pil(x):
+        return Image.fromarray(x).convert("RGB")
 
     tr = transforms.Compose(
         [
@@ -217,7 +218,7 @@ def translate(
     with torch.no_grad():
         if isinstance(img, list):
             batch_size = len(img)
-            fake = (
+            fake: np.ndarray = (
                 model(
                     torch.cat([tr(to_pil(i)) for i in img]).view(
                         batch_size, 1, 256, 256

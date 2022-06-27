@@ -53,7 +53,7 @@ from .visualization import plot_confusion_matrix
 
 
 class Net(pl.LightningModule):
-    dataset: Optional[PairedDataSet]
+    dataset: PairedDataSet
     cache_rate: float = 1.0
     config_preprocessing: dict = {}
     config_augmentation: dict = {}
@@ -297,9 +297,9 @@ def train(
     num_classes: int = 0,
     num_channels: int = 1,
     spatial_dims: int = 3,
-    spatial_size: Sequence[int] = None,
-    preprocessing: dict = None,
-    augmentation: dict = None,
+    spatial_size: Sequence[int] = [],
+    preprocessing: dict = {},
+    augmentation: dict = {},
     augment_intensity: bool = False,
     augment_spatial: bool = False,
     max_epochs: int = 600,
@@ -311,7 +311,7 @@ def train(
 
     # initialise the LightningModule
     if checkpoint_file and Path(checkpoint_file).exists():
-        net = Net.load_from_checkpoint(f"{checkpoint_file}")
+        net: Net = Net.load_from_checkpoint(f"{checkpoint_file}")
     else:
         if num_classes > 0 and tissue_list:
             raise ValueError(

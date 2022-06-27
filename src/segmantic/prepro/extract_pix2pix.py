@@ -1,10 +1,11 @@
 import os
-import numpy as np
-import itk
-from random import randint
 from pathlib import Path
+from random import randint
 
-from .core import identity, AnyImage, imread, imwrite
+import itk
+import numpy as np
+
+from .core import NdarrayImage, identity, imread, imwrite
 from .modality import scale_clamp_ct
 
 
@@ -69,7 +70,7 @@ def export_slices(  # type: ignore
             )
 
 
-def preprocess_mri(x: AnyImage) -> AnyImage:
+def preprocess_mri(x: NdarrayImage) -> NdarrayImage:
     x_view = itk.array_view_from_image(x)
     x_view *= 255.0 / 280.0
     np.clip(x_view, a_min=0, a_max=255, out=x_view)
