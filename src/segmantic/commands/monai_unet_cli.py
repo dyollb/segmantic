@@ -140,7 +140,7 @@ def predict(
         ..., "--tissue-list", "-t", help="label descriptors in iSEG format"
     ),
     results_dir: Path = typer.Option(
-        Path("results"), "--results-dir", "-r", help="output directory"
+        None, "--results-dir", "-r", help="output directory"
     ),
     gpu_ids: List[int] = [0],
 ) -> None:

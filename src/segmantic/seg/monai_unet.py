@@ -9,7 +9,7 @@ import torch
 import torch.utils.data
 from monai.bundle import ConfigParser
 from monai.config import print_config
-from monai.data import CacheDataset, decollate_batch, list_data_collate
+from monai.data import CacheDataset, Dataset, decollate_batch, list_data_collate
 from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
 from monai.metrics import ConfusionMatrixMetric, CumulativeAverage, DiceMetric
@@ -87,12 +87,10 @@ class Net(pl.LightningModule):
         self.post_pred = Compose(
             [
                 EnsureType(),
-                AsDiscrete(argmax=True, to_onehot=True, n_classes=num_classes),
+                AsDiscrete(argmax=True, to_onehot=num_classes),
             ]
         )
-        self.post_label = Compose(
-            [EnsureType(), AsDiscrete(to_onehot=True, n_classes=num_classes)]
-        )
+        self.post_label = Compose([EnsureType(), AsDiscrete(to_onehot=num_classes)])
         self.dice_metric = DiceMetric(
             include_background=False, reduction="mean", get_not_nans=False
         )
@@ -388,9 +386,9 @@ def train(
 
 def predict(
     model_file: Path,
-    output_dir: Path,
     test_images: List[Path],
     test_labels: Optional[List[Path]] = None,
+    output_dir: Path = None,
     tissue_dict: Dict[str, int] = None,
     spacing: Sequence[float] = [],
     gpu_ids: list = [],
@@ -424,6 +422,23 @@ def predict(
         spacing=spacing,
     )
 
+    # save predicted labels
+    save_transforms = []
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+        save_transforms = [
+            SaveImaged(
+                keys="pred",
+                meta_keys="pred_meta_dict",
+                output_dir=output_dir,
+                output_postfix="seg",
+                resample=False,
+                separate_folder=False,
+                print_log=False,
+            )
+        ]
+
     # invert transforms (e.g. cropping)
     post_transforms = Compose(
         [
@@ -439,29 +454,19 @@ def predict(
                 to_tensor=True,
             ),
             AsDiscreted(keys="pred", argmax=True),
-            SaveImaged(
-                keys="pred",
-                meta_keys="pred_meta_dict",
-                output_dir=output_dir,
-                output_postfix="seg",
-                resample=False,
-                separate_folder=False,
-            ),
         ]
+        + save_transforms
     )
 
-    # for saving output
-    os.makedirs(output_dir, exist_ok=True)
-
-    # define data / data loader
-    test_ds = CacheDataset(
-        data=test_files,
-        transform=pre_transforms,
-        cache_rate=1.0,
+    # data loader
+    test_loader = torch.utils.data.DataLoader(
+        Dataset(
+            data=test_files,
+            transform=pre_transforms,
+        ),
+        batch_size=1,
         num_workers=0,
     )
-
-    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, num_workers=0)
 
     inferer = SlidingWindowInferer(
         roi_size=net.spatial_size, sw_batch_size=4, device=device
@@ -517,7 +522,7 @@ def predict(
                 if filename_or_obj and isinstance(filename_or_obj, list):
                     filename_or_obj = filename_or_obj[0]
 
-                if filename_or_obj:
+                if output_dir and filename_or_obj:
                     base = Path(filename_or_obj).stem.replace(".nii", "")
                     c = confusion_matrix(
                         num_classes=num_classes,

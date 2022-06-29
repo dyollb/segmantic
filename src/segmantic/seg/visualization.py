@@ -1,12 +1,14 @@
-import numpy as np
-import random
 import colorsys
-from matplotlib import colors
-import matplotlib.pyplot as plt
-from pathlib import Path
 import itertools
-from typing import List, Optional, Tuple
-from ..prepro.labels import load_tissue_colors, RGBTuple
+import random
+from pathlib import Path
+from typing import List, Optional
+
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib import colors
+
+from ..prepro.labels import RGBTuple, load_tissue_colors
 
 
 def make_tissue_cmap(tissue_list_file: Path) -> colors.ListedColormap:
@@ -25,10 +27,10 @@ def make_tissue_cmap(tissue_list_file: Path) -> colors.ListedColormap:
 def make_random_cmap(num_classes: int) -> colors.ListedColormap:
     """Make a random color map for <num_classes> different classes"""
 
-    def random_color(l: int, max_label: int) -> RGBTuple:
-        if l == 0:
+    def random_color(id: int, max_label: int) -> RGBTuple:
+        if id == 0:
             return (0, 0, 0)
-        hue = l / (2.0 * max_label) + (l % 2) * 0.5
+        hue = id / (2.0 * max_label) + (id % 2) * 0.5
         hue = min(hue, 1.0)
         return colorsys.hls_to_rgb(hue, 0.5, 1.0)
 
@@ -93,7 +95,7 @@ def plot_confusion_matrix(
     if normalize:
         cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
 
-    plt.figure(figsize=(16, 16))
+    fig = plt.figure(figsize=(16, 16))
     plt.imshow(cm, interpolation="nearest", cmap=cmap)
     plt.title(title)
     plt.colorbar()
@@ -131,3 +133,4 @@ def plot_confusion_matrix(
         plt.savefig(file_name)
     else:
         plt.show()
+    plt.close(fig)
