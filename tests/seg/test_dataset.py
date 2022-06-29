@@ -72,7 +72,7 @@ def test_find_matching_files(tmp_path: Path):
         root_path=tmp_path, size=3, label_suffix="_seg"
     )
 
-    tuple1 = dataset.find_matching_files([image_dir / "**/*.nii.gz"])
+    tuple1 = dataset.find_matching_files([image_dir / "**" / "*.nii.gz"])
     assert len(tuple1) == 3
 
     tuple2 = dataset.find_matching_files(

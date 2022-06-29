@@ -6,7 +6,7 @@ import numpy as np
 import typer
 
 
-def check_masks(directory: Path, file_glob: str = "*.nii.gz"):
+def fix_binary_masks(directory: Path, file_glob: str = "*.nii.gz"):
     logger = logging.getLogger(__file__)
     for file_path in directory.glob(file_glob):
         img = nib.load(f"{file_path}")
@@ -30,4 +30,4 @@ def check_masks(directory: Path, file_glob: str = "*.nii.gz"):
 
 
 if __name__ == "__main__":
-    typer.run(check_masks)
+    typer.run(fix_binary_masks)
