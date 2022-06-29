@@ -14,12 +14,6 @@ from ..util.cli import get_default_args, validate_args
 app = typer.Typer()
 
 
-def _get_nifti_files(dir: Path) -> List[Path]:
-    if not dir:
-        return []
-    return sorted(f for f in dir.glob("*.nii.gz"))
-
-
 @app.command()
 def train_config(
     config_file: Path = typer.Option(
@@ -146,7 +140,7 @@ def predict(
         ..., "--tissue-list", "-t", help="label descriptors in iSEG format"
     ),
     results_dir: Path = typer.Option(
-        Path("results"), "--results-dir", "-r", help="output directory"
+        None, "--results-dir", "-r", help="output directory"
     ),
     gpu_ids: List[int] = [0],
 ) -> None:
@@ -157,10 +151,13 @@ def predict(
         -i ./dataset/images -m model.ckpt --results-dir ./results --tissue-list ./dataset/labels.txt
     """
 
+    def _get_nifti_files(dir: Path) -> List[Path]:
+        return sorted(f for f in dir.glob("*.nii.gz"))
+
     monai_unet.predict(
         model_file=model_file,
         test_images=_get_nifti_files(image_dir),
-        test_labels=_get_nifti_files(labels_dir),
+        test_labels=_get_nifti_files(labels_dir) if labels_dir else [],
         tissue_dict=load_tissue_list(tissue_list),
         output_dir=results_dir,
         gpu_ids=gpu_ids,

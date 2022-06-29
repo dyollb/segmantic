@@ -3,6 +3,7 @@ from pathlib import Path
 
 import typer
 
+from segmantic.seg.dataset import find_matching_files
 from segmantic.util.json import PathEncoder
 
 
@@ -15,23 +16,9 @@ def generate_dataset(
     dataset_file: Path = None,
 ):
     """Generate json file describing"""
+    data = find_matching_files([image_dir / image_glob, labels_dir / labels_glob])
 
-    labels_ext = labels_glob.replace("*", "", 1)
-    labels_file = {
-        p.name.replace(labels_ext, ""): p for p in labels_dir.glob(labels_glob)
-    }
-
-    print(f"Number of label images: {len(labels_file)}")
-
-    image_ext = image_glob.replace("*", "", 1)
-    data_dicts = []
-
-    for p in image_dir.glob(image_glob):
-        key = p.name.replace(image_ext, "")
-        if key in labels_file:
-            data_dicts.append({"image": p, "label": labels_file[key]})
-
-    print(f"Number of pairs: {len(data_dicts)}\n")
+    data_dicts = [{"image": p[0], "label": p[1]} for p in data]
 
     json_text = json.dumps(
         {

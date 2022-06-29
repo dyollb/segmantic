@@ -9,7 +9,7 @@ import torch
 import torch.utils.data
 from monai.bundle import ConfigParser
 from monai.config import print_config
-from monai.data import CacheDataset, decollate_batch, list_data_collate
+from monai.data import CacheDataset, Dataset, decollate_batch, list_data_collate
 from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
 from monai.metrics import ConfusionMatrixMetric, CumulativeAverage, DiceMetric
@@ -17,7 +17,6 @@ from monai.networks.layers import Norm
 from monai.networks.nets import UNet
 from monai.networks.utils import one_hot
 from monai.transforms import (
-    AddChanneld,
     AsDiscrete,
     AsDiscreted,
     Compose,
@@ -30,6 +29,7 @@ from monai.transforms import (
     NormalizeIntensityd,
     Orientationd,
     RandAdjustContrastd,
+    RandBiasFieldd,
     RandCropByLabelClassesd,
     RandFlipd,
     RandGibbsNoised,
@@ -57,8 +57,8 @@ class Net(pl.LightningModule):
     cache_rate: float = 1.0
     config_preprocessing: dict = {}
     config_augmentation: dict = {}
-    intensity_augmentation: bool = False
-    spatial_augmentation: bool = False
+    augment_intensity: bool = False
+    augment_spatial: bool = False
     best_val_dice = 0
     best_val_epoch = 0
 
@@ -87,12 +87,10 @@ class Net(pl.LightningModule):
         self.post_pred = Compose(
             [
                 EnsureType(),
-                AsDiscrete(argmax=True, to_onehot=True, n_classes=num_classes),
+                AsDiscrete(argmax=True, to_onehot=num_classes),
             ]
         )
-        self.post_label = Compose(
-            [EnsureType(), AsDiscrete(to_onehot=True, n_classes=num_classes)]
-        )
+        self.post_label = Compose([EnsureType(), AsDiscrete(to_onehot=num_classes)])
         self.dice_metric = DiceMetric(
             include_background=False, reduction="mean", get_not_nans=False
         )
@@ -112,16 +110,13 @@ class Net(pl.LightningModule):
     ) -> Transform:
 
         xforms = [
-            LoadImaged(keys=keys, reader="itkreader"),
-            EnsureChannelFirstd(keys="image"),
+            LoadImaged(keys=keys, reader="ITKReader"),
+            EnsureChannelFirstd(keys=keys),
             Orientationd(keys=keys, axcodes="RAS"),
-            NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
+            NormalizeIntensityd(keys="image", nonzero=False, channel_wise=True),
             CropForegroundd(keys=keys, source_key="image"),
             EnsureTyped(keys=keys, dtype=np.float32, device=torch.device(self.device)),
         ]
-
-        if "label" in keys:
-            xforms.insert(1, AddChanneld(keys="label"))
 
         if spacing:
             xforms.append(Spacingd(keys=keys, pixdim=spacing))
@@ -129,20 +124,9 @@ class Net(pl.LightningModule):
         return Compose(xforms)
 
     def default_augmentation(self, keys: List[str]):
-        xforms: List[Transform] = [
-            RandFlipd(keys=keys, prob=0.2, spatial_axis=a)
-            for a in range(self.spatial_dims)
-        ]
+        xforms: List[Transform] = []
 
-        if self.intensity_augmentation:
-            xforms += [
-                RandAdjustContrastd(keys="image", prob=0.2, gamma=(0.5, 4.5)),
-                RandHistogramShiftd(keys="image", prob=0.2, num_control_points=10),
-                RandGibbsNoised(keys="image", prob=0.2, alpha=(0.0, 1.0)),
-                RandKSpaceSpikeNoised(keys="image", global_prob=0.1, prob=0.2),
-            ]
-
-        if self.spatial_augmentation:
+        if self.augment_spatial:
             mode = ["nearest" if k == "label" else "bilinear" for k in keys]
             xforms.append(RandRotated(keys=keys, prob=0.2, range_z=0.4, mode=mode))
             if self.spatial_dims > 2:
@@ -154,16 +138,30 @@ class Net(pl.LightningModule):
                 RandZoomd(keys=keys, prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=mode)
             )
 
-        xforms.append(
+        xforms += [
             RandCropByLabelClassesd(
                 keys=keys,
                 label_key="label",
-                image_key="image",
                 spatial_size=self.spatial_size,
                 num_classes=self.num_classes,
                 num_samples=4,
             )
-        )
+        ]
+
+        if self.augment_intensity:
+            xforms += [
+                RandAdjustContrastd(keys="image", prob=0.2, gamma=(0.5, 4.5)),
+                RandHistogramShiftd(keys="image", prob=0.2, num_control_points=10),
+                RandBiasFieldd(keys="image", prob=0.2),
+                RandGibbsNoised(keys="image", prob=0.2, alpha=(0.0, 1.0)),
+                RandKSpaceSpikeNoised(keys="image", global_prob=0.1, prob=0.2),
+            ]
+
+        xforms += [
+            RandFlipd(keys=keys, prob=0.2, spatial_axis=a)
+            for a in range(self.spatial_dims)
+        ]
+
         return Compose(xforms)
 
     def forward(self, x):
@@ -204,7 +202,9 @@ class Net(pl.LightningModule):
             parser.parse(True)
             augmentation = parser.get_parsed_content("augmentation")
         if not augmentation:
-            print("Using default augmentation")
+            print(
+                f"Using default augmentation (intensity={self.augment_intensity}, spatial={self.augment_spatial})"
+            )
             augmentation = self.default_augmentation(keys=["image", "label"])
 
         # we use cached datasets - these are 10x faster than regular datasets
@@ -341,8 +341,8 @@ def train(
         )
     net.config_preprocessing = preprocessing
     net.config_augmentation = augmentation
-    net.intensity_augmentation = augment_intensity
-    net.spatial_augmentation = augment_spatial
+    net.augment_intensity = augment_intensity
+    net.augment_spatial = augment_spatial
     net.cache_rate = cache_rate
 
     # store dataset used for training
@@ -386,9 +386,9 @@ def train(
 
 def predict(
     model_file: Path,
-    output_dir: Path,
     test_images: List[Path],
     test_labels: Optional[List[Path]] = None,
+    output_dir: Path = None,
     tissue_dict: Dict[str, int] = None,
     spacing: Sequence[float] = [],
     gpu_ids: list = [],
@@ -411,6 +411,7 @@ def predict(
 
     # pre-processing transforms
     if test_labels:
+        assert len(test_images) == len(test_labels)
         test_files = [
             {"image": i, "label": l} for i, l in zip(test_images, test_labels)
         ]
@@ -421,6 +422,23 @@ def predict(
         keys=["image", "label"] if test_labels else ["image"],
         spacing=spacing,
     )
+
+    # save predicted labels
+    save_transforms = []
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+        save_transforms = [
+            SaveImaged(
+                keys="pred",
+                meta_keys="pred_meta_dict",
+                output_dir=output_dir,
+                output_postfix="seg",
+                resample=False,
+                separate_folder=False,
+                print_log=False,
+            )
+        ]
 
     # invert transforms (e.g. cropping)
     post_transforms = Compose(
@@ -437,29 +455,19 @@ def predict(
                 to_tensor=True,
             ),
             AsDiscreted(keys="pred", argmax=True),
-            SaveImaged(
-                keys="pred",
-                meta_keys="pred_meta_dict",
-                output_dir=output_dir,
-                output_postfix="seg",
-                resample=False,
-                separate_folder=False,
-            ),
         ]
+        + save_transforms
     )
 
-    # for saving output
-    os.makedirs(output_dir, exist_ok=True)
-
-    # define data / data loader
-    test_ds = CacheDataset(
-        data=test_files,
-        transform=pre_transforms,
-        cache_rate=1.0,
+    # data loader
+    test_loader = torch.utils.data.DataLoader(
+        Dataset(
+            data=test_files,
+            transform=pre_transforms,
+        ),
+        batch_size=1,
         num_workers=0,
     )
-
-    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=1, num_workers=0)
 
     inferer = SlidingWindowInferer(
         roi_size=net.spatial_size, sw_batch_size=4, device=device
@@ -515,7 +523,7 @@ def predict(
                 if filename_or_obj and isinstance(filename_or_obj, list):
                     filename_or_obj = filename_or_obj[0]
 
-                if filename_or_obj:
+                if output_dir and filename_or_obj:
                     base = Path(filename_or_obj).stem.replace(".nii", "")
                     c = confusion_matrix(
                         num_classes=num_classes,
