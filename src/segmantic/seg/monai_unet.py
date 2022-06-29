@@ -411,6 +411,7 @@ def predict(
 
     # pre-processing transforms
     if test_labels:
+        assert len(test_images) == len(test_labels)
         test_files = [
             {"image": i, "label": l} for i, l in zip(test_images, test_labels)
         ]
