@@ -32,7 +32,7 @@ def get_default_args(signature: inspect.Signature) -> Dict[str, Any]:
 def validate_args(
     args: Dict[str, Any],
     signature: inspect.Signature,
-):
+) -> Dict[str, Any]:
     valid_args = {}
     for k in args:
         if k in signature.parameters:
