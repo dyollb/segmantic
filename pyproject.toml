@@ -25,6 +25,7 @@ requires-python = ">=3.7"
 dependencies = [
     "dominate",
     "itk",
+    "makefun",
     "matplotlib",
     "monai",
     "nibabel",
@@ -33,7 +34,8 @@ dependencies = [
     "tensorboard",
     "torch",
     "torchvision",
-    "typer"
+    "typer",
+    "typing-extensions"
 ]
 
 [project.optional-dependencies]
@@ -70,9 +72,9 @@ show_column_numbers = true
 show_error_codes = true
 
 [[tool.mypy.overrides]]
-module = "segmantic.prepro.*"
+module = "segmantic.prepro.*,segmantic.util.*"
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = "itk.*,PIL,matplotlib.*,torch,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml"
+module = "itk.*,PIL,matplotlib.*,torch,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml,scipy.*"
 ignore_missing_imports = true
