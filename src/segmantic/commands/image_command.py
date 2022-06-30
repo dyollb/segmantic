@@ -1,10 +1,11 @@
 from inspect import Parameter, isclass, signature
 from pathlib import Path
-from typing import Any, Optional, Union, get_args, get_origin
+from typing import Any, Optional, Union
 
 import itk
 import typer
 from makefun import wraps
+from typing_extensions import get_args, get_origin
 
 from segmantic.prepro.core import Image2, Image3
 
