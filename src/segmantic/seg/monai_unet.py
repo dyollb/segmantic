@@ -170,8 +170,8 @@ class Net(pytorch_lightning.LightningModule):
             # SqueezeDimd(keys="image", dim=4),
             # Lambdad(("image",), self.squeeze_dim),
             Orientationd(keys=keys, axcodes="RAS"),
-            NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
-            CropForegroundd(keys=keys, source_key="image"),
+            NormalizeIntensityd(keys="image", nonzero=False, channel_wise=True),
+            # CropForegroundd(keys=keys, source_key="label"),
         ]
 
         if "label" in keys:
@@ -198,7 +198,7 @@ class Net(pytorch_lightning.LightningModule):
                             keys="image", prob=0.2, num_control_points=10
                         ),
                         RandGibbsNoised(keys="image", prob=0.2, alpha=(0.0, 1.0)),
-                        RandKSpaceSpikeNoised(keys="image", global_prob=0.1, prob=0.2),
+                        RandKSpaceSpikeNoised(keys="image", global_prob=0.2, prob=0.1),
                     ]
                 )
 
@@ -226,11 +226,11 @@ class Net(pytorch_lightning.LightningModule):
                 RandCropByLabelClassesd(
                     keys=keys,
                     label_key="label",
-                    image_key="image",
+                    image_key=None,
                     spatial_size=spatial_size,
                     num_classes=self.num_classes,
                     num_samples=self.num_samples,
-                    image_threshold=-np.inf,
+                    ratios=[0, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 3, 1, 4, 3, 2, 2, 2, 2, 2]
                 )
             )
         return Compose(xforms + [EnsureTyped(keys=keys)])
@@ -274,7 +274,7 @@ class Net(pytorch_lightning.LightningModule):
         print(type(self.train_ds))
         train_loader = torch.utils.data.DataLoader(
             self.train_ds,
-            batch_size=5,
+            batch_size=4,
             shuffle=True,
             num_workers=0,
             collate_fn=list_data_collate,
@@ -327,6 +327,15 @@ class Net(pytorch_lightning.LightningModule):
 
     def training_step(self, batch, batch_idx):
         images, labels = batch["image"], batch["label"]
+        #print(type(images), type(labels))
+        #print(images.size(), labels.size())
+        #labels_np = labels.copy()
+        #test_np = labels.cpu().detach().numpy()
+        #print(type(test_np))
+        #print(test_np.shape)
+
+        #plt.imshow()
+        #assert False
         output = self.forward(images)
 
         optimizer = self.optimizers()
@@ -435,13 +444,14 @@ def train(
                          'T_0': 50,
                          'T_multi': 1}
     print_config()
-
+    print(image_dir)
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
     log_dir = output_dir / "logs"
 
     tissue_dict = load_tissue_list(tissue_list)
     num_classes = max(tissue_dict.values()) + 1
+    print(num_classes)
     if not len(tissue_dict) == num_classes:
         raise ValueError("Expecting contiguous labels in range [0,N-1]")
 
@@ -711,7 +721,8 @@ def predict(
                         tissue_names,
                         file_name=output_dir / (base + "_confusion.png"),
                     )
-        np.savetxt(output_dir.joinpath('mean_dice_' + str(model_file.stem) + '_generalize.txt'), all_mean_dice,
+        np.savetxt(output_dir.joinpath('mean_dice_' + str(model_file.stem) + 'hummel_generalize_for_real.txt'),
+                   all_mean_dice,
                    delimiter=',')
 
 
@@ -723,6 +734,7 @@ def cross_validate(
         config_files_dir: Path,
         checkpoint_file: Path = None,
         max_epochs: int = 100,
+        generalize_test: bool = False,
         n_splits: int = 7,
         save_nifti: bool = True,
         gpu_ids: List[int] = [0],
@@ -733,6 +745,76 @@ def cross_validate(
     output_dir.mkdir(exist_ok=True)
 
     tissue_dict = load_tissue_list(tissue_list)
+    print(tissue_dict)
+
+    if generalize_test:
+        generalize_test_img_path = Path(
+            "M:/DATA/ITIS/MasterThesis/Datasets/T1_T2/T1_T2_spacing_(1, 1, 1)/Hummel_Nibabel_one_only")
+        generalize_test_label_path = Path("M:/DATA/ITIS/MasterThesis/Labels/16_Labels/Hummel")
+
+        generalize_img = []
+        generalize_label = []
+
+        for file in generalize_test_img_path.iterdir():
+            generalize_img.append(file)
+        for file in generalize_test_label_path.iterdir():
+            generalize_label.append(file)
+
+        print(generalize_img)
+        print(generalize_label)
+
+        test_layers = [(16,32,64,128,256,516), (16,32,64,128), (64,128,256,512,1024)]
+        test_strides = [(2, 2, 2, 2, 2), (2, 2, 2), (2, 2, 2, 2)]
+        print('Pizza 1')
+        for folder in Path(output_dir).iterdir():
+            print(folder)
+            if folder.is_dir() and folder.name == 'Layers[16,32,64,128,256,516]':
+                print('in folder')
+                for fold in folder.iterdir():
+                    #print(fold.name)
+                    for file in fold.iterdir():
+                        #print(file.name)
+                        if file.match('*.ckpt'):
+                            print('start prediction')
+                            predict(model_file=file,
+                                    output_dir=fold,
+                                    test_images=generalize_img,
+                                    test_labels=generalize_label,
+                                    tissue_dict=tissue_dict,
+                                    layers=test_layers[0],
+                                    strides=test_strides[0],
+                                    save_nifti=save_nifti,
+                                    gpu_ids=gpu_ids)
+            elif folder.is_dir() and folder.name == 'Layers[16,32,64,128]':
+                for fold in folder.iterdir():
+                    for file in fold.iterdir():
+                        if file.match('*.ckpt'):
+                            print('start prediction')
+                            predict(model_file=file,
+                                    output_dir=fold,
+                                    test_images=generalize_img,
+                                    test_labels=generalize_label,
+                                    tissue_dict=tissue_dict,
+                                    layers=test_layers[1],
+                                    strides=test_strides[1],
+                                    save_nifti=save_nifti,
+                                    gpu_ids=gpu_ids)
+            elif folder.is_dir() and folder.name == 'Layers[64,128,256,512,1024]':
+                for fold in folder.iterdir():
+                    for file in fold.iterdir():
+                        if file.match('*.ckpt'):
+                            print('start prediction')
+                            predict(model_file=file,
+                                    output_dir=fold,
+                                    test_images=generalize_img,
+                                    test_labels=generalize_label,
+                                    tissue_dict=tissue_dict,
+                                    layers=test_layers[2],
+                                    strides=test_strides[2],
+                                    save_nifti=save_nifti,
+                                    gpu_ids=gpu_ids)
+            else:
+                continue
 
     kf = KFold(n_splits=n_splits)
 
@@ -756,18 +838,10 @@ def cross_validate(
         if not path.exists():
             path.mkdir()
 
-    for config_file in config_files_dir.iterdir():
+    for config_file in Path(config_files_dir).iterdir():
         output_dir_scenario = output_dir.joinpath(str(config_file.name))
         if not output_dir_scenario.exists():
             output_dir_scenario.mkdir()
-
-        with open(config_file, 'r+') as f:
-            data = json.load(f)
-            data['image_dir'] = cv_split_train_img
-            data['labels_dir'] = cv_split_train_lbl
-            data['output_dir'] = output_dir_scenario
-            current_layers = data['layers']
-            current_strides = data['strides']
 
         for train_idx, test_idx in kf.split(image_idx, image_idx):
 
@@ -777,6 +851,16 @@ def cross_validate(
                 continue
             else:
                 current_output.mkdir()
+
+            if config_file.exists():
+                data = json.loads(config_file.read_text())
+                data["image_dir"] = str(cv_split_train_img)
+                data["labels_dir"] = str(cv_split_train_lbl)
+                data["output_dir"] = str(current_output)
+                current_layers = data["layers"]
+                current_strides = data["strides"]
+            with open(config_file, 'w') as f:
+                json.dump(data, f, indent=4)
 
             # Delete all files from the temporary file dirs
             for folder in all_paths:
