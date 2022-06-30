@@ -142,6 +142,9 @@ def predict(
     results_dir: Path = typer.Option(
         None, "--results-dir", "-r", help="output directory"
     ),
+    spacing: List[int] = typer.Option(
+        [], "--spacing", help="if specified, the image is first resampled"
+    ),
     gpu_ids: List[int] = [0],
 ) -> None:
     """Predict segmentations
@@ -160,6 +163,7 @@ def predict(
         test_labels=_get_nifti_files(labels_dir) if labels_dir else [],
         tissue_dict=load_tissue_list(tissue_list),
         output_dir=results_dir,
+        spacing=spacing,
         gpu_ids=gpu_ids,
     )
 
