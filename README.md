@@ -11,7 +11,7 @@ Semantic segmentation and image-to-image translation based on AI. This repo coll
 
 Dependencies for specific versions of CUDA are listed in `requirements/cu113.txt`, `requirements/cu111.txt`, etc.. It is advisable to install the package in a virtual environment, e.g. using `venv`
 
-```
+```sh
 cd /your/working/directory
 python -m venv .venv
 ```
@@ -20,13 +20,13 @@ Activate it using e.g. `source .venv/bin/activate` on Linux/Mac and `.venv\Scrip
 
 To install this repo (this will install all dependencies):
 
-```
+```sh
 pip install git+https://github.com/dyollb/segmantic.git#egg=segmantic
 ```
 
 Or in edit/dev mode
 
-```
+```sh
 pip install -e git+https://github.com/dyollb/segmantic.git#egg=segmantic[dev]
 ```
 
@@ -42,20 +42,20 @@ torchvision==0.12.0+cu113
 
 Run training:
 
-```
+```sh
 python src/segmantic/scripts/run_monai_unet.py train --help
 python src/segmantic/scripts/run_monai_unet.py train -i work/inputs/images -l work/inputs/labels -t work/inputs/labels.txt -r work/outputs
 ```
 
 Or with a config file - first create empty config file (yml or json format):
 
-```
+```sh
 python scripts\run_monai_unet.py train-config -c config.yml --print-defaults
 ```
 
 Edit `config.yml` e.g. to
 
-```
+```yaml
 image_dir: work/inputs/images
 labels_dir: work/inputs/labels
 tissue_list: work/inputs/labels.txt
@@ -74,7 +74,7 @@ gpu_ids:
 
 Now run training:
 
-```
+```sh
 python scripts\run_monai_unet.py train-config -c config.yml
 ```
 
@@ -94,7 +94,7 @@ The example above included a tissue_list option. This is a path to a text file s
 
 Instead of providing the 'image_dir'/'labels_dir' pair, the training data can also be described by one or multiple json files. Example config that globs data from multiple json files:
 
-```
+```json
 {
     "dataset" = ["/dataA/dataset.json", "/dataB/dataset.json"],
     "output_dir" = "<path where trained model and logs are saved>",
