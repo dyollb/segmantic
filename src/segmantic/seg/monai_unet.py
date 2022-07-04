@@ -650,9 +650,12 @@ def predict(
                         tissue_names,
                         file_name=output_dir / (base + "_confusion.png"),
                     )
-        np.savetxt(output_dir.joinpath('mean_dice_' + str(model_file.stem) + '_generalized_score.txt'),
-                   all_mean_dice,
-                   delimiter=',')
+        if output_dir is None:
+            print("No output path specified, dice scores won't be saved.")
+        else:
+            np.savetxt(output_dir.joinpath('mean_dice_' + str(model_file.stem) + '_generalized_score.txt'),
+                       all_mean_dice,
+                       delimiter=',')
 
         if test_labels:
             print("*" * 80)
@@ -723,9 +726,8 @@ def cross_validate(
                                     test_images=generalize_img,
                                     test_labels=generalize_label,
                                     tissue_dict=tissue_dict,
-                                    layers=test_layers[0],
+                                    channels=test_layers[0],
                                     strides=test_strides[0],
-                                    save_nifti=save_nifti,
                                     gpu_ids=gpu_ids)
             elif folder.is_dir() and folder.name == 'Layers[16,32,64,128]':
                 for fold in folder.iterdir():
@@ -737,9 +739,8 @@ def cross_validate(
                                     test_images=generalize_img,
                                     test_labels=generalize_label,
                                     tissue_dict=tissue_dict,
-                                    layers=test_layers[1],
+                                    channels=test_layers[1],
                                     strides=test_strides[1],
-                                    save_nifti=save_nifti,
                                     gpu_ids=gpu_ids)
             elif folder.is_dir() and folder.name == 'Layers[64,128,256,512,1024]':
                 for fold in folder.iterdir():
@@ -751,9 +752,8 @@ def cross_validate(
                                     test_images=generalize_img,
                                     test_labels=generalize_label,
                                     tissue_dict=tissue_dict,
-                                    layers=test_layers[2],
+                                    channels=test_layers[2],
                                     strides=test_strides[2],
-                                    save_nifti=save_nifti,
                                     gpu_ids=gpu_ids)
             else:
                 continue
