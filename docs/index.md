@@ -13,7 +13,7 @@ Segmantic is a [MONAI]/[PyTorch]-based library for medical image segmentation.
 
 Create a virtal environment
 
-```
+```sh
 cd /your/working/directory
 python -m venv .venv
 ```
@@ -22,13 +22,13 @@ Activate it using e.g. `source .venv/bin/activate` on Linux/Mac and `.venv\Scrip
 
 To install this repo (this will install all dependencies):
 
-```
+```sh
 pip install git+https://github.com/dyollb/segmantic.git#egg=segmantic
 ```
 
 Or in edit/dev mode
 
-```
+```sh
 pip install -e git+https://github.com/dyollb/segmantic.git#egg=segmantic[dev]
 ```
 
