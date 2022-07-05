@@ -4,14 +4,13 @@ import shutil
 import subprocess as sp
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Union
-from adabelief_pytorch import AdaBelief
-from sklearn.model_selection import KFold
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.utils.data
+from adabelief_pytorch import AdaBelief
 from monai.bundle import ConfigParser
 from monai.config import print_config
 from monai.data import CacheDataset, Dataset, decollate_batch, list_data_collate
@@ -47,8 +46,13 @@ from monai.transforms import (
 from monai.transforms.spatial.dictionary import Spacingd
 from monai.transforms.transform import Transform
 from monai.utils import set_determinism
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
+from pytorch_lightning.callbacks import (
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
+)
 from pytorch_lightning.loggers import TensorBoardLogger
+from sklearn.model_selection import KFold
 
 from ..prepro.labels import load_tissue_list
 from .dataset import PairedDataSet
@@ -67,18 +71,21 @@ class Net(pl.LightningModule):
     best_val_dice = 0
     best_val_epoch = 0
     num_samples: int = 4
-    optimizer: dict = {'optimizer': 'Adam',
-                       'lr': 1e-4,
-                       'momentum': 0.9,
-                       'epsilon': 1e-8,
-                       'amsgrad': False,
-                       'weight_decouple': False
-                       }
-    lr_scheduling: dict = {'scheduler': 'Constant',
-                           'factor': 0.5,
-                           'patience': 10,
-                           'T_0': 50,
-                           'T_multi': 1}
+    optimizer: dict = {
+        "optimizer": "Adam",
+        "lr": 1e-4,
+        "momentum": 0.9,
+        "epsilon": 1e-8,
+        "amsgrad": False,
+        "weight_decouple": False,
+    }
+    lr_scheduling: dict = {
+        "scheduler": "Constant",
+        "factor": 0.5,
+        "patience": 10,
+        "T_0": 50,
+        "T_multi": 1,
+    }
 
     def __init__(
         self,
@@ -86,8 +93,8 @@ class Net(pl.LightningModule):
         num_channels: int = 1,
         spatial_dims: int = 3,
         spatial_size: Sequence[int] = None,
-        channels: tuple = (16, 32, 64, 128, 256),
-        strides: tuple = (2, 2, 2, 2),
+        channels: Tuple[int] = (16, 32, 64, 128, 256),
+        strides: Tuple[int] = (2, 2, 2, 2),
         dropout: float = 0.0,
     ):
         super().__init__()
@@ -161,7 +168,7 @@ class Net(pl.LightningModule):
             xforms.append(
                 RandZoomd(keys=keys, prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=mode)
             )
-        # ToDo: Don't hardcode ratios. Maybe pass it in config file as well?
+        # Set probability of background label being chosen as corp center to 0 and rest to 1.
         xforms += [
             RandCropByLabelClassesd(
                 keys=keys,
@@ -169,7 +176,7 @@ class Net(pl.LightningModule):
                 spatial_size=self.spatial_size,
                 num_classes=self.num_classes,
                 num_samples=self.num_samples,
-                ratios=[0, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 3, 1, 4, 3, 2, 2, 2, 2, 2]
+                ratios=[0 if x == 0 else 1 for x in range(len(self.num_classes))],
             )
         ]
 
@@ -263,40 +270,50 @@ class Net(pl.LightningModule):
         return val_loader
 
     def configure_optimizers(self):
-        if self.optimizer['optimizer'] == 'SGD':
-            optimizer = torch.optim.SGD(self._model.parameters(),
-                                        lr=self.optimizer['lr'],
-                                        momentum=self.optimizer['momentum'])
-        elif self.optimizer['optimizer'] == 'Adam':
-            optimizer = torch.optim.Adam(self._model.parameters(),
-                                         lr=self.optimizer['lr'],
-                                         amsgrad=self.optimizer['amsgrad'])
-        elif self.optimizer['optimizer'] == 'AdaBelief':
-            optimizer = AdaBelief(self._model.parameters(),
-                                  lr=self.optimizer['lr'],
-                                  eps=self.optimizer['epsilon'],  # try 1e-8 and 1e-16
-                                  betas=(0.9, 0.999),
-                                  weight_decouple=self.optimizer['weight_decouple'],  # Try True/False
-                                  fixed_decay=False,
-                                  rectify=False)
+        if self.optimizer["optimizer"] == "SGD":
+            optimizer = torch.optim.SGD(
+                self._model.parameters(),
+                lr=self.optimizer["lr"],
+                momentum=self.optimizer["momentum"],
+            )
+        elif self.optimizer["optimizer"] == "Adam":
+            optimizer = torch.optim.Adam(
+                self._model.parameters(),
+                lr=self.optimizer["lr"],
+                amsgrad=self.optimizer["amsgrad"],
+            )
+        elif self.optimizer["optimizer"] == "AdaBelief":
+            optimizer = AdaBelief(
+                self._model.parameters(),
+                lr=self.optimizer["lr"],
+                eps=self.optimizer["epsilon"],  # try 1e-8 and 1e-16
+                betas=(0.9, 0.999),
+                weight_decouple=self.optimizer["weight_decouple"],  # Try True/False
+                fixed_decay=False,
+                rectify=False,
+            )
 
-        if self.lr_scheduling['scheduler'] == 'Constant':
-            lr_scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer=optimizer,
-                                                               factor=1,
-                                                               total_iters=0)
+        if self.lr_scheduling["scheduler"] == "Constant":
+            lr_scheduler = torch.optim.lr_scheduler.ConstantLR(
+                optimizer=optimizer, factor=1, total_iters=0
+            )
 
-        elif self.lr_scheduling['scheduler'] == 'ReduceOnPlateau':
-            lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer,
-                                                                      mode='min',
-                                                                      factor=self.lr_scheduling['factor'],
-                                                                      patience=self.lr_scheduling['patience'],
-                                                                      verbose=True)
+        elif self.lr_scheduling["scheduler"] == "ReduceOnPlateau":
+            lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer=optimizer,
+                mode="min",
+                factor=self.lr_scheduling["factor"],
+                patience=self.lr_scheduling["patience"],
+                verbose=True,
+            )
 
-        elif self.lr_scheduling['scheduler'] == 'Cosine':
-            lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer,
-                                                                                T_0=self.lr_scheduling['T_0'],
-                                                                                T_mult=self.lr_scheduling['T_multi'],
-                                                                                eta_min=0)
+        elif self.lr_scheduling["scheduler"] == "Cosine":
+            lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer=optimizer,
+                T_0=self.lr_scheduling["T_0"],
+                T_mult=self.lr_scheduling["T_multi"],
+                eta_min=0,
+            )
         return [optimizer], [lr_scheduler]
 
     def training_step(self, batch, batch_idx):
@@ -333,7 +350,7 @@ class Net(pl.LightningModule):
         mean_val_loss = torch.tensor(val_loss / num_items)
 
         scheduler = self.lr_schedulers()
-        if self.lr_scheduling['scheduler'] == 'ReduceOnPlateau':
+        if self.lr_scheduling["scheduler"] == "ReduceOnPlateau":
             scheduler.step(mean_val_loss)
         else:
             scheduler.step()
@@ -372,8 +389,8 @@ def train(
     augmentation: dict = {},
     augment_intensity: bool = False,
     augment_spatial: bool = False,
-    channels: tuple = (16, 32, 64, 128, 256),
-    strides: tuple = (2, 2, 2, 2),
+    channels: Tuple[int] = (16, 32, 64, 128, 256),
+    strides: Tuple[int] = (2, 2, 2, 2),
     dropout: float = 0.0,
     num_samples: int = 4,
     optimizer=None,
@@ -387,19 +404,22 @@ def train(
 ) -> pl.LightningModule:
 
     if optimizer is None:
-        optimizer = {'optimizer': 'Adam',
-                     'lr': 1e-4,
-                     'momentum': 0.9,
-                     'epsilon': 1e-8,
-                     'amsgrad': False,
-                     'weight_decouple': False
-                     }
+        optimizer = {
+            "optimizer": "Adam",
+            "lr": 1e-4,
+            "momentum": 0.9,
+            "epsilon": 1e-8,
+            "amsgrad": False,
+            "weight_decouple": False,
+        }
     if lr_scheduling is None:
-        lr_scheduling = {'scheduler': 'Constant',
-                         'factor': 0.5,
-                         'patience': 10,
-                         'T_0': 50,
-                         'T_multi': 1}
+        lr_scheduling = {
+            "scheduler": "Constant",
+            "factor": 0.5,
+            "patience": 10,
+            "T_0": 50,
+            "T_multi": 1,
+        }
 
     # initialise the LightningModule
     if checkpoint_file and Path(checkpoint_file).exists():
@@ -424,7 +444,7 @@ def train(
             spatial_size=spatial_size,
             channels=channels,
             strides=strides,
-            dropout=dropout
+            dropout=dropout,
         )
     if image_dir and labels_dir:
         net.dataset = PairedDataSet(image_dir=image_dir, labels_dir=labels_dir)
@@ -460,19 +480,20 @@ def train(
     )
 
     # defining early stopping. When val loss improves less than 0 over 30 epochs, the training will be stopped.
-    early_stop_callback = EarlyStopping(monitor="val_dice",
-                                        min_delta=0.00,
-                                        patience=early_stop_patience,
-                                        mode='max',
-                                        check_finite=True,
-                                        )
+    early_stop_callback = EarlyStopping(
+        monitor="val_dice",
+        min_delta=0.00,
+        patience=early_stop_patience,
+        mode="max",
+        check_finite=True,
+    )
 
-    lr_monitor = LearningRateMonitor(log_momentum=True,
-                                     logging_interval='epoch')
+    lr_monitor = LearningRateMonitor(log_momentum=True, logging_interval="epoch")
 
     print_config()
 
     # initialise Lightning's trainer.
+    # ToDo: Add self.batch_size to init and actually make the auto_scale_batch_size work.
     trainer = pl.Trainer(
         gpus=gpu_ids,
         auto_scale_batch_size=True,
@@ -500,11 +521,11 @@ def predict(
     test_labels: Optional[List[Path]] = None,
     output_dir: Path = None,
     tissue_dict: Dict[str, int] = None,
-    channels: tuple = (16, 32, 64, 128, 256),
-    strides: tuple = (2, 2, 2, 2),
+    channels: Tuple[int] = (16, 32, 64, 128, 256),
+    strides: Tuple[int] = (2, 2, 2, 2),
     dropout: float = 0.0,
     spacing: Sequence[float] = [],
-    gpu_ids: list = [],
+    gpu_ids: List[int] = [],
 ) -> None:
     # load trained model
     model_settings_json = model_file.with_suffix(".json")
@@ -514,7 +535,9 @@ def predict(
             settings = json.load(json_file)
         net = Net.load_from_checkpoint(f"{model_file}", **settings)
     else:
-        net = Net.load_from_checkpoint(f"{model_file}", channels=channels, strides=strides, dropout=dropout)
+        net = Net.load_from_checkpoint(
+            f"{model_file}", channels=channels, strides=strides, dropout=dropout
+        )
     num_classes = net.num_classes
 
     net.freeze()
@@ -631,8 +654,9 @@ def predict(
                 dice_np = dice.cpu().numpy()
                 print("Mean Dice: ", np.mean(dice_np))
                 print("Class Dice:")
-                all_mean_dice.append(dice_metric.aggregate().item())
                 print_table(tissue_names, np.squeeze(dice_np))
+
+                all_mean_dice.append(dice_metric.aggregate().item())
 
                 filename_or_obj = test_data["image_meta_dict"]["filename_or_obj"]
                 if filename_or_obj and isinstance(filename_or_obj, list):
@@ -653,9 +677,13 @@ def predict(
         if output_dir is None:
             print("No output path specified, dice scores won't be saved.")
         else:
-            np.savetxt(output_dir.joinpath('mean_dice_' + str(model_file.stem) + '_generalized_score.txt'),
-                       all_mean_dice,
-                       delimiter=',')
+            np.savetxt(
+                output_dir.joinpath(
+                    "mean_dice_" + str(model_file.stem) + "_generalized_score.txt"
+                ),
+                all_mean_dice,
+                delimiter=",",
+            )
 
         if test_labels:
             print("*" * 80)
@@ -672,20 +700,20 @@ def predict(
 
 
 def cross_validate(
-        image_dir: Path,
-        labels_dir: Path,
-        tissue_list: Path,
-        output_dir: Path,
-        config_files_dir: Path,
-        checkpoint_file: Path = None,
-        max_epochs: int = 100,
-        generalize_test: bool = False,
-        n_splits: int = 7,
-        save_nifti: bool = True,
-        gpu_ids: List[int] = [0],
+    image_dir: Path,
+    labels_dir: Path,
+    tissue_list: Path,
+    output_dir: Path,
+    config_files_dir: Path,
+    checkpoint_file: Path = None,
+    max_epochs: int = 100,
+    generalize_test: bool = False,
+    n_splits: int = 7,
+    save_nifti: bool = True,
+    gpu_ids: List[int] = [0],
 ):
     print_config()
-    print('Cross-validating')
+    print("Cross-validating")
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
 
@@ -694,8 +722,11 @@ def cross_validate(
 
     if generalize_test:
         generalize_test_img_path = Path(
-            "M:/DATA/ITIS/MasterThesis/Datasets/T1_T2/T1_T2_spacing_(1, 1, 1)/Hummel_Nibabel_one_only")
-        generalize_test_label_path = Path("M:/DATA/ITIS/MasterThesis/Labels/16_Labels/Hummel")
+            "M:/DATA/ITIS/MasterThesis/Datasets/T1_T2/T1_T2_spacing_(1, 1, 1)/Hummel_Nibabel_one_only"
+        )
+        generalize_test_label_path = Path(
+            "M:/DATA/ITIS/MasterThesis/Labels/16_Labels/Hummel"
+        )
 
         generalize_img = []
         generalize_label = []
@@ -708,53 +739,63 @@ def cross_validate(
         print(generalize_img)
         print(generalize_label)
 
-        test_layers = [(16,32,64,128,256,516), (16,32,64,128), (64,128,256,512,1024)]
+        test_layers = [
+            (16, 32, 64, 128, 256, 516),
+            (16, 32, 64, 128),
+            (64, 128, 256, 512, 1024),
+        ]
         test_strides = [(2, 2, 2, 2, 2), (2, 2, 2), (2, 2, 2, 2)]
-        print('Pizza 1')
+
         for folder in Path(output_dir).iterdir():
             print(folder)
-            if folder.is_dir() and folder.name == 'Layers[16,32,64,128,256,516]':
-                print('in folder')
+            if folder.is_dir() and folder.name == "Layers[16,32,64,128,256,516]":
+                print("in folder")
                 for fold in folder.iterdir():
-                    #print(fold.name)
+                    # print(fold.name)
                     for file in fold.iterdir():
-                        #print(file.name)
-                        if file.match('*.ckpt'):
-                            print('start prediction')
-                            predict(model_file=file,
-                                    output_dir=fold,
-                                    test_images=generalize_img,
-                                    test_labels=generalize_label,
-                                    tissue_dict=tissue_dict,
-                                    channels=test_layers[0],
-                                    strides=test_strides[0],
-                                    gpu_ids=gpu_ids)
-            elif folder.is_dir() and folder.name == 'Layers[16,32,64,128]':
-                for fold in folder.iterdir():
-                    for file in fold.iterdir():
-                        if file.match('*.ckpt'):
-                            print('start prediction')
-                            predict(model_file=file,
-                                    output_dir=fold,
-                                    test_images=generalize_img,
-                                    test_labels=generalize_label,
-                                    tissue_dict=tissue_dict,
-                                    channels=test_layers[1],
-                                    strides=test_strides[1],
-                                    gpu_ids=gpu_ids)
-            elif folder.is_dir() and folder.name == 'Layers[64,128,256,512,1024]':
+                        # print(file.name)
+                        if file.match("*.ckpt"):
+                            print("start prediction")
+                            predict(
+                                model_file=file,
+                                output_dir=fold,
+                                test_images=generalize_img,
+                                test_labels=generalize_label,
+                                tissue_dict=tissue_dict,
+                                channels=test_layers[0],
+                                strides=test_strides[0],
+                                gpu_ids=gpu_ids,
+                            )
+            elif folder.is_dir() and folder.name == "Layers[16,32,64,128]":
                 for fold in folder.iterdir():
                     for file in fold.iterdir():
-                        if file.match('*.ckpt'):
-                            print('start prediction')
-                            predict(model_file=file,
-                                    output_dir=fold,
-                                    test_images=generalize_img,
-                                    test_labels=generalize_label,
-                                    tissue_dict=tissue_dict,
-                                    channels=test_layers[2],
-                                    strides=test_strides[2],
-                                    gpu_ids=gpu_ids)
+                        if file.match("*.ckpt"):
+                            print("start prediction")
+                            predict(
+                                model_file=file,
+                                output_dir=fold,
+                                test_images=generalize_img,
+                                test_labels=generalize_label,
+                                tissue_dict=tissue_dict,
+                                channels=test_layers[1],
+                                strides=test_strides[1],
+                                gpu_ids=gpu_ids,
+                            )
+            elif folder.is_dir() and folder.name == "Layers[64,128,256,512,1024]":
+                for fold in folder.iterdir():
+                    for file in fold.iterdir():
+                        if file.match("*.ckpt"):
+                            print("start prediction")
+                            predict(
+                                model_file=file,
+                                output_dir=fold,
+                                test_images=generalize_img,
+                                test_labels=generalize_label,
+                                tissue_dict=tissue_dict,
+                                channels=test_layers[2],
+                                strides=test_strides[2],
+                                gpu_ids=gpu_ids,
+                            )
             else:
                 continue
 
@@ -765,16 +806,23 @@ def cross_validate(
 
     image_idx = np.arange(len(image_files))
 
-    cv_split = Path(Path(image_dir).parent) / 'CV_Split'
-    cv_split_train = cv_split / 'train'
-    cv_split_predict = cv_split / 'predict'
-    cv_split_train_img = cv_split_train / 'images'
-    cv_split_train_lbl = cv_split_train / 'labels'
-    cv_split_predict_img = cv_split_predict / 'images'
-    cv_split_predict_lbl = cv_split_predict / 'labels'
+    cv_split = Path(Path(image_dir).parent) / "CV_Split"
+    cv_split_train = cv_split / "train"
+    cv_split_predict = cv_split / "predict"
+    cv_split_train_img = cv_split_train / "images"
+    cv_split_train_lbl = cv_split_train / "labels"
+    cv_split_predict_img = cv_split_predict / "images"
+    cv_split_predict_lbl = cv_split_predict / "labels"
 
-    all_paths = [cv_split, cv_split_train, cv_split_predict,
-                 cv_split_train_img, cv_split_train_lbl, cv_split_predict_img, cv_split_predict_lbl]
+    all_paths = [
+        cv_split,
+        cv_split_train,
+        cv_split_predict,
+        cv_split_train_img,
+        cv_split_train_lbl,
+        cv_split_predict_img,
+        cv_split_predict_lbl,
+    ]
 
     for path in all_paths:
         if not path.exists():
@@ -789,10 +837,8 @@ def cross_validate(
 
             current_output = output_dir_scenario.joinpath(str(test_idx))
             print(current_output)
-            if current_output.exists():
-                continue
-            else:
-                current_output.mkdir()
+
+            current_output.mkdir(exist_ok=True)
 
             if config_file.exists():
                 data = json.loads(config_file.read_text())
@@ -801,12 +847,12 @@ def cross_validate(
                 data["output_dir"] = str(current_output)
                 current_layers = data["layers"]
                 current_strides = data["strides"]
-            with open(config_file, 'w') as f:
+            with open(config_file, "w") as f:
                 json.dump(data, f, indent=4)
 
             # Delete all files from the temporary file dirs
             for folder in all_paths:
-                if folder.match('images') or folder.match('labels'):
+                if folder.match("images") or folder.match("labels"):
                     for file in folder.iterdir():
                         file.unlink()
 
@@ -824,27 +870,32 @@ def cross_validate(
                 shutil.copyfile(file, cv_split_train_lbl.joinpath(file.name))
             for file in label_test:
                 shutil.copyfile(file, cv_split_predict_lbl.joinpath(file.name))
-            print('start training')
+            print("start training")
 
-            result = sp.run([sys.executable,
-                             "F:/Melanie/ETH/11.Semester/MasterThesis/Python/src/segmantic/scripts/run_monai_unet.py",
-                             "train-config",
-                             "-c",
-                             config_file])
-
-            print('training finished')
+            result = sp.run(
+                [
+                    sys.executable,
+                    "F:/Melanie/ETH/11.Semester/MasterThesis/Python/src/segmantic/scripts/run_monai_unet.py",
+                    "train-config",
+                    "-c",
+                    config_file,
+                ]
+            )
+            print(result)
+            print("training finished")
 
             for file in current_output.iterdir():
-                if file.match('*.ckpt'):
-                    print('start prediction')
-                    predict(model_file=file,
-                            output_dir=current_output,
-                            test_images=image_test,
-                            test_labels=label_test,
-                            tissue_dict=tissue_dict,
-                            channels=current_layers,
-                            strides=current_strides,
-                            dropout=0.0,
-                            spacing=[1, 1, 1],
-                            gpu_ids=gpu_ids)
-
+                if file.match("*.ckpt"):
+                    print("start prediction")
+                    predict(
+                        model_file=file,
+                        output_dir=current_output,
+                        test_images=image_test,
+                        test_labels=label_test,
+                        tissue_dict=tissue_dict,
+                        channels=current_layers,
+                        strides=current_strides,
+                        dropout=0.0,
+                        spacing=[1, 1, 1],
+                        gpu_ids=gpu_ids,
+                    )

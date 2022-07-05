@@ -98,22 +98,26 @@ def cross_validate(
     """
     sig = inspect.signature(monai_unet.cross_validate)
 
+    is_json = config_file and config_file.suffix.lower() == ".json"
+    dumps = (
+        partial(json.dumps, indent=4)
+        if is_json
+        else partial(yaml.safe_dump, sort_keys=False)
+    )
+    loads = json.loads if is_json else yaml.safe_load
+
     if print_defaults:
-        default_args = {
-            k: v.default
-            if v.default is not inspect.Parameter.empty
-            else f"<required option: {v.annotation.__name__}>"
-            for k, v in sig.parameters.items()
-        }
-        config_file.write_text(json.dumps(default_args, indent=4))
+        default_args = get_default_args(signature=sig)
+        if config_file:
+            config_file.write_text(dumps(default_args))
+        else:
+            print(dumps(default_args))
         return
 
-    cast_path = (
-        lambda v, k: Path(v) if isinstance(sig.parameters[k].annotation, Path) else v
-    )
+    if not config_file:
+        raise ValueError("Invalid '--config-file' argument")
 
-    args: dict = json.loads(config_file.read_text())
-    args = {k: cast_path(v, k) for k, v in args.items()}
+    args: dict = validate_args(loads(config_file.read_text()), signature=sig)
     monai_unet.cross_validate(**args)
 
 
