@@ -1,6 +1,5 @@
 import json
 import os
-import shutil
 import subprocess as sp
 import sys
 from pathlib import Path
@@ -52,7 +51,6 @@ from pytorch_lightning.callbacks import (
     ModelCheckpoint,
 )
 from pytorch_lightning.loggers import TensorBoardLogger
-from sklearn.model_selection import KFold
 
 from ..prepro.labels import load_tissue_list
 from .dataset import PairedDataSet
@@ -379,6 +377,7 @@ def train(
     dataset: Union[Path, List[Path]] = [],
     image_dir: Path = None,
     labels_dir: Path = None,
+    cross_val: bool = False,
     output_dir: Path,
     checkpoint_file: Path = None,
     num_classes: int = 0,
@@ -449,7 +448,10 @@ def train(
     if image_dir and labels_dir:
         net.dataset = PairedDataSet(image_dir=image_dir, labels_dir=labels_dir)
     elif dataset:
-        net.dataset = PairedDataSet.load_from_json(dataset)
+        if not cross_val:
+            net.dataset = PairedDataSet.load_from_json(dataset)
+        else:
+            net.dataset = PairedDataSet.load_from_cross_val_json(dataset)
     else:
         raise ValueError(
             "Either provide a dataset file, or an image_dir, labels_dir pair."
@@ -496,7 +498,7 @@ def train(
     # ToDo: Add self.batch_size to init and actually make the auto_scale_batch_size work.
     trainer = pl.Trainer(
         gpus=gpu_ids,
-        auto_scale_batch_size=True,
+        # auto_scale_batch_size=True,
         precision=16 if mixed_precision else 32,
         max_epochs=max_epochs,
         logger=tb_logger,
@@ -708,6 +710,8 @@ def cross_validate(
     checkpoint_file: Path = None,
     max_epochs: int = 100,
     generalize_test: bool = False,
+    generalize_img_dir: Optional[Path] = None,
+    generalize_lbl_dir: Optional[Path] = None,
     n_splits: int = 7,
     save_nifti: bool = True,
     gpu_ids: List[int] = [0],
@@ -720,162 +724,42 @@ def cross_validate(
     tissue_dict = load_tissue_list(tissue_list)
     print(tissue_dict)
 
-    if generalize_test:
-        generalize_test_img_path = Path(
-            "M:/DATA/ITIS/MasterThesis/Datasets/T1_T2/T1_T2_spacing_(1, 1, 1)/Hummel_Nibabel_one_only"
-        )
-        generalize_test_label_path = Path(
-            "M:/DATA/ITIS/MasterThesis/Labels/16_Labels/Hummel"
-        )
-
-        generalize_img = []
-        generalize_label = []
-
-        for file in generalize_test_img_path.iterdir():
-            generalize_img.append(file)
-        for file in generalize_test_label_path.iterdir():
-            generalize_label.append(file)
-
-        print(generalize_img)
-        print(generalize_label)
-
-        test_layers = [
-            (16, 32, 64, 128, 256, 516),
-            (16, 32, 64, 128),
-            (64, 128, 256, 512, 1024),
-        ]
-        test_strides = [(2, 2, 2, 2, 2), (2, 2, 2), (2, 2, 2, 2)]
-
-        for folder in Path(output_dir).iterdir():
-            print(folder)
-            if folder.is_dir() and folder.name == "Layers[16,32,64,128,256,516]":
-                print("in folder")
-                for fold in folder.iterdir():
-                    # print(fold.name)
-                    for file in fold.iterdir():
-                        # print(file.name)
-                        if file.match("*.ckpt"):
-                            print("start prediction")
-                            predict(
-                                model_file=file,
-                                output_dir=fold,
-                                test_images=generalize_img,
-                                test_labels=generalize_label,
-                                tissue_dict=tissue_dict,
-                                channels=test_layers[0],
-                                strides=test_strides[0],
-                                gpu_ids=gpu_ids,
-                            )
-            elif folder.is_dir() and folder.name == "Layers[16,32,64,128]":
-                for fold in folder.iterdir():
-                    for file in fold.iterdir():
-                        if file.match("*.ckpt"):
-                            print("start prediction")
-                            predict(
-                                model_file=file,
-                                output_dir=fold,
-                                test_images=generalize_img,
-                                test_labels=generalize_label,
-                                tissue_dict=tissue_dict,
-                                channels=test_layers[1],
-                                strides=test_strides[1],
-                                gpu_ids=gpu_ids,
-                            )
-            elif folder.is_dir() and folder.name == "Layers[64,128,256,512,1024]":
-                for fold in folder.iterdir():
-                    for file in fold.iterdir():
-                        if file.match("*.ckpt"):
-                            print("start prediction")
-                            predict(
-                                model_file=file,
-                                output_dir=fold,
-                                test_images=generalize_img,
-                                test_labels=generalize_label,
-                                tissue_dict=tissue_dict,
-                                channels=test_layers[2],
-                                strides=test_strides[2],
-                                gpu_ids=gpu_ids,
-                            )
-            else:
-                continue
-
-    kf = KFold(n_splits=n_splits)
-
-    image_files = sorted(Path(image_dir).glob("*.nii.gz"))
-    label_files = sorted(Path(labels_dir).glob("*.nii.gz"))
-
-    image_idx = np.arange(len(image_files))
-
-    cv_split = Path(Path(image_dir).parent) / "CV_Split"
-    cv_split_train = cv_split / "train"
-    cv_split_predict = cv_split / "predict"
-    cv_split_train_img = cv_split_train / "images"
-    cv_split_train_lbl = cv_split_train / "labels"
-    cv_split_predict_img = cv_split_predict / "images"
-    cv_split_predict_lbl = cv_split_predict / "labels"
-
-    all_paths = [
-        cv_split,
-        cv_split_train,
-        cv_split_predict,
-        cv_split_train_img,
-        cv_split_train_lbl,
-        cv_split_predict_img,
-        cv_split_predict_lbl,
-    ]
-
-    for path in all_paths:
-        if not path.exists():
-            path.mkdir()
+    data_dicts = PairedDataSet.create_data_dict(
+        image_dir=image_dir, labels_dir=labels_dir
+    )
+    all_datafold_paths: List[Path] = PairedDataSet.kfold_crossval(
+        num_splits=n_splits, data_dicts=data_dicts, output_dir=output_dir
+    )
 
     for config_file in Path(config_files_dir).iterdir():
+        # ToDo: add yaml file support
+        assert config_file.suffixes in [".json"]
+
         output_dir_scenario = output_dir.joinpath(str(config_file.name))
         if not output_dir_scenario.exists():
             output_dir_scenario.mkdir()
 
-        for train_idx, test_idx in kf.split(image_idx, image_idx):
+        for count, dataset_path in enumerate(all_datafold_paths):
 
-            current_output = output_dir_scenario.joinpath(str(test_idx))
+            current_output = output_dir_scenario.joinpath(str(count))
             print(current_output)
 
             current_output.mkdir(exist_ok=True)
 
-            if config_file.exists():
-                data = json.loads(config_file.read_text())
-                data["image_dir"] = str(cv_split_train_img)
-                data["labels_dir"] = str(cv_split_train_lbl)
-                data["output_dir"] = str(current_output)
-                current_layers = data["layers"]
-                current_strides = data["strides"]
+            data = json.loads(config_file.read_text())
+            data["dataset"] = str(dataset_path)
+            data["output_dir"] = str(current_output)
+            current_layers = data["layers"]
+            current_strides = data["strides"]
             with open(config_file, "w") as f:
                 json.dump(data, f, indent=4)
 
-            # Delete all files from the temporary file dirs
-            for folder in all_paths:
-                if folder.match("images") or folder.match("labels"):
-                    for file in folder.iterdir():
-                        file.unlink()
-
-            # set new splits
-            image_train = [image_files[index] for index in train_idx]
-            image_test = [image_files[index] for index in test_idx]
-            label_train = [label_files[index] for index in train_idx]
-            label_test = [label_files[index] for index in test_idx]
-
-            for file in image_train:
-                shutil.copyfile(file, cv_split_train_img.joinpath(file.name))
-            for file in image_test:
-                shutil.copyfile(file, cv_split_predict_img.joinpath(file.name))
-            for file in label_train:
-                shutil.copyfile(file, cv_split_train_lbl.joinpath(file.name))
-            for file in label_test:
-                shutil.copyfile(file, cv_split_predict_lbl.joinpath(file.name))
             print("start training")
 
             result = sp.run(
                 [
                     sys.executable,
-                    "F:/Melanie/ETH/11.Semester/MasterThesis/Python/src/segmantic/scripts/run_monai_unet.py",
+                    str(Path.cwd().parents[2].joinpath("scripts/run_monai_unet.py")),
                     "train-config",
                     "-c",
                     config_file,
@@ -883,19 +767,26 @@ def cross_validate(
             )
             print(result)
             print("training finished")
+            if generalize_test:
+                assert generalize_img_dir.is_dir() and generalize_lbl_dir.is_dir()
 
-            for file in current_output.iterdir():
-                if file.match("*.ckpt"):
-                    print("start prediction")
-                    predict(
-                        model_file=file,
-                        output_dir=current_output,
-                        test_images=image_test,
-                        test_labels=label_test,
-                        tissue_dict=tissue_dict,
-                        channels=current_layers,
-                        strides=current_strides,
-                        dropout=0.0,
-                        spacing=[1, 1, 1],
-                        gpu_ids=gpu_ids,
-                    )
+                test_images = sorted(list(generalize_img_dir.glob(".nii.gz")))
+                test_labels = sorted(list(generalize_lbl_dir.glob(".nii.gz")))
+
+                assert len(test_images) == len(test_labels)
+
+                for file in current_output.iterdir():
+                    if file.match("*.ckpt"):
+                        print("start prediction")
+                        predict(
+                            model_file=file,
+                            output_dir=current_output,
+                            test_images=test_images,
+                            test_labels=test_labels,
+                            tissue_dict=tissue_dict,
+                            channels=current_layers,
+                            strides=current_strides,
+                            dropout=0.0,
+                            spacing=[1, 1, 1],
+                            gpu_ids=gpu_ids,
+                        )
