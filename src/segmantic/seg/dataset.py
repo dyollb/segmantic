@@ -77,7 +77,7 @@ class PairedDataSet(object):
         val_idx: Optional[List[int]] = None,
     ):
         if not cross_val:
-            assert shuffle is not None and random_seed is not None
+            assert shuffle is not None
             if shuffle:
                 my_random = random.Random(random_seed)
                 my_random.shuffle(data_dicts)
