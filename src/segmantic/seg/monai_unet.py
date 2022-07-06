@@ -734,7 +734,7 @@ def cross_validate(
 
     for config_file in Path(config_files_dir).iterdir():
         # ToDo: add yaml file support
-        assert config_file.suffixes == ".json"
+        assert config_file.suffix in [".json"]
 
         output_dir_scenario = output_dir.joinpath(str(config_file.name))
         if not output_dir_scenario.exists():
