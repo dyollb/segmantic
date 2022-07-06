@@ -91,8 +91,8 @@ class Net(pl.LightningModule):
         num_channels: int = 1,
         spatial_dims: int = 3,
         spatial_size: Sequence[int] = None,
-        channels: Tuple[int] = (16, 32, 64, 128, 256),
-        strides: Tuple[int] = (2, 2, 2, 2),
+        channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
+        strides: Tuple[int, ...] = (2, 2, 2, 2),
         dropout: float = 0.0,
     ):
         super().__init__()
@@ -388,8 +388,8 @@ def train(
     augmentation: dict = {},
     augment_intensity: bool = False,
     augment_spatial: bool = False,
-    channels: Tuple[int] = (16, 32, 64, 128, 256),
-    strides: Tuple[int] = (2, 2, 2, 2),
+    channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
+    strides: Tuple[int, ...] = (2, 2, 2, 2),
     dropout: float = 0.0,
     num_samples: int = 4,
     optimizer=None,
@@ -451,7 +451,8 @@ def train(
         if not cross_val:
             net.dataset = PairedDataSet.load_from_json(dataset)
         else:
-            net.dataset = PairedDataSet.load_from_cross_val_json(dataset)
+            assert isinstance(dataset, Path)
+            net.dataset = PairedDataSet.load_from_cross_val_json(Path(dataset))
     else:
         raise ValueError(
             "Either provide a dataset file, or an image_dir, labels_dir pair."
@@ -523,8 +524,8 @@ def predict(
     test_labels: Optional[List[Path]] = None,
     output_dir: Path = None,
     tissue_dict: Dict[str, int] = None,
-    channels: Tuple[int] = (16, 32, 64, 128, 256),
-    strides: Tuple[int] = (2, 2, 2, 2),
+    channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
+    strides: Tuple[int, ...] = (2, 2, 2, 2),
     dropout: float = 0.0,
     spacing: Sequence[float] = [],
     gpu_ids: List[int] = [],
@@ -733,7 +734,7 @@ def cross_validate(
 
     for config_file in Path(config_files_dir).iterdir():
         # ToDo: add yaml file support
-        assert config_file.suffixes in [".json"]
+        assert config_file.suffixes == ".json"
 
         output_dir_scenario = output_dir.joinpath(str(config_file.name))
         if not output_dir_scenario.exists():
@@ -767,7 +768,11 @@ def cross_validate(
             )
             print(result)
             print("training finished")
-            if generalize_test:
+            if (
+                generalize_test
+                and generalize_img_dir is not None
+                and generalize_lbl_dir is not None
+            ):
                 assert generalize_img_dir.is_dir() and generalize_lbl_dir.is_dir()
 
                 test_images = sorted(list(generalize_img_dir.glob(".nii.gz")))
@@ -790,3 +795,5 @@ def cross_validate(
                             spacing=[1, 1, 1],
                             gpu_ids=gpu_ids,
                         )
+            else:
+                raise ValueError("generalize_img_dir and _lbl_dir need to be provided.")

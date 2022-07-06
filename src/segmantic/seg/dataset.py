@@ -68,8 +68,8 @@ class PairedDataSet(object):
     def _create_split(
         self,
         data_dicts: List[Dict[str, Path]],
-        valid_split: Optional[float],
-        shuffle: Optional[bool],
+        valid_split: Optional[float] = None,
+        shuffle: Optional[bool] = None,
         random_seed: Optional[int] = None,
         max_files: Optional[int] = 0,
         cross_val: bool = False,
@@ -77,14 +77,17 @@ class PairedDataSet(object):
         val_idx: Optional[List[int]] = None,
     ):
         if not cross_val:
+            assert shuffle is not None and random_seed is not None
             if shuffle:
                 my_random = random.Random(random_seed)
                 my_random.shuffle(data_dicts)
 
+            assert max_files is not None
             num_total = len(data_dicts)
             if max_files > 0:
                 num_total = min(num_total, max_files)
 
+            assert valid_split is not None
             num_valid = int(valid_split * num_total)
             if num_total > 1 and valid_split > 0:
                 num_valid = max(num_valid, 1)
@@ -93,8 +96,11 @@ class PairedDataSet(object):
             self._train_files = data_dicts[num_valid:num_total]
             self._val_files = data_dicts[:num_valid]
         else:
-            self._train_files = [data_dicts[index] for index in train_idx]
-            self._val_files = [data_dicts[index] for index in val_idx]
+            if train_idx is not None and val_idx is not None:
+                self._train_files = [data_dicts[index] for index in train_idx]
+                self._val_files = [data_dicts[index] for index in val_idx]
+            else:
+                raise ValueError("Please Assign train and val_idx")
 
     def check_matching_filenames(self):
         """Check if the files names are identical except for any prefix or suffix"""
@@ -231,39 +237,36 @@ class PairedDataSet(object):
             "training": [{"image": "image/*.nii.gz", "label": "label/*.nii.gz"}],
         }
         """
-        if isinstance(file_path, (Path, str)):
-            file_path = [file_path]
 
         data_dicts_train: List[Dict[str, Path]] = []
         data_dicts_val: List[Dict[str, Path]] = []
 
-        for p in (Path(f) for f in file_path):
-            training = json.loads(p.read_text())["training"]
-            validation = json.loads(p.read_text())["validation"]
+        training = json.loads(file_path.read_text())["training"]
+        validation = json.loads(file_path.read_text())["validation"]
 
-            for t, v in zip(training, validation):
-                # special case: absolute paths
-                if Path(t["image"]).is_absolute():
-                    image_files_t = [Path(t["image"])]
-                    label_files_t = [Path(t["label"])]
-                    image_files_v = [Path(v["image"])]
-                    label_files_v = [Path(v["label"])]
-                else:
-                    image_files_t = list(p.parent.glob(t["image"]))
-                    label_files_t = list(p.parent.glob(t["label"]))
-                    image_files_v = list(p.parent.glob(v["image"]))
-                    label_files_v = list(p.parent.glob(v["label"]))
-                assert len(image_files_t) == len(label_files_t)
-                assert len(image_files_v) == len(label_files_v)
+        for t, v in zip(training, validation):
+            # special case: absolute paths
+            if Path(t["image"]).is_absolute():
+                image_files_t = [Path(t["image"])]
+                label_files_t = [Path(t["label"])]
+                image_files_v = [Path(v["image"])]
+                label_files_v = [Path(v["label"])]
+            else:
+                image_files_t = list(file_path.parent.glob(t["image"]))
+                label_files_t = list(file_path.parent.glob(t["label"]))
+                image_files_v = list(file_path.parent.glob(v["image"]))
+                label_files_v = list(file_path.parent.glob(v["label"]))
+            assert len(image_files_t) == len(label_files_t)
+            assert len(image_files_v) == len(label_files_v)
 
-                for i_t, o_t, i_v, o_v in zip(
-                    sorted(image_files_t),
-                    sorted(label_files_t),
-                    sorted(label_files_v),
-                    sorted(label_files_v),
-                ):
-                    data_dicts_train.append({"image": i_t, "label": o_t})
-                    data_dicts_val.append({"image": i_v, "label": o_v})
+            for i_t, o_t, i_v, o_v in zip(
+                sorted(image_files_t),
+                sorted(label_files_t),
+                sorted(label_files_v),
+                sorted(label_files_v),
+            ):
+                data_dicts_train.append({"image": i_t, "label": o_t})
+                data_dicts_val.append({"image": i_v, "label": o_v})
 
         combined_ds = PairedDataSet()
         combined_ds._train_files = data_dicts_train
