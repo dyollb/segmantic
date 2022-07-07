@@ -37,8 +37,10 @@ def test_PairedDataSet(tmp_path: Path):
 
 
 def test_load_from_json(tmp_path: Path):
+    val_paths = tmp_path.joinpath("val_paths")
+    val_paths.mkdir(exist_ok=True)
     image_dir, labels_dir = dataset_mockup(root_path=tmp_path, size=2)
-    image_dir_v, labels_dir_v = dataset_mockup(root_path=tmp_path, size=1)
+    image_dir_v, labels_dir_v = dataset_mockup(root_path=val_paths, size=1)
 
     dataset_file = tmp_path / "dataset.json"
     dataset_file.write_text(
@@ -94,9 +96,9 @@ def test_kfold_crossval(tmp_path: Path):
         output_dir=output_dir,
         test_data_dicts=test_data_dicts,
     )
-
+    datafolds_dir = output_dir.joinpath("datafolds")
     assert len(all_datafold_paths) == 7
-    assert len(sorted(list(output_dir.glob("*.json")))) == 7
+    assert len(sorted(list(datafolds_dir.glob("*.json")))) == 7
 
 
 def test_find_matching_files(tmp_path: Path):
