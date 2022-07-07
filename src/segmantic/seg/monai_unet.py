@@ -703,9 +703,9 @@ def cross_validate(
     tissue_list: Path,
     output_dir: Path,
     config_files_dir: Path,
-    test_image_dir: Optional[Path] = None,
-    test_labels_dir: Optional[Path] = None,
-    n_splits: int = 7,
+    test_image_dir: Path = None,
+    test_labels_dir: Path = None,
+    num_splits: int = 7,
     gpu_ids: List[int] = [0],
 ):
     print_config()
@@ -728,7 +728,7 @@ def cross_validate(
         )
 
     all_datafold_paths: List[Path] = PairedDataSet.kfold_crossval(
-        num_splits=n_splits,
+        num_splits=num_splits,
         data_dicts=data_dicts,
         output_dir=output_dir,
         test_data_dicts=test_data_dicts,

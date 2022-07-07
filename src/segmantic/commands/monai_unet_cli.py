@@ -86,7 +86,7 @@ def train_config(
 @app.command()
 def cross_validate(
     config_file: Path = typer.Option(
-        ..., "--config-file", "-c", help="config file in json format"
+        None, "--config-file", "-c", help="config file in json format"
     ),
     print_defaults: bool = False,
 ):
