@@ -96,7 +96,7 @@ def test_kfold_crossval(tmp_path: Path):
     )
 
     assert len(all_datafold_paths) == 7
-    assert len(sorted(list(output_dir.glob("**..json")))) == 7
+    assert len(sorted(list(output_dir.glob("*.json")))) == 7
 
 
 def test_find_matching_files(tmp_path: Path):
