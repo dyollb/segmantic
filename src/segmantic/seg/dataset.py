@@ -229,6 +229,7 @@ class PairedDataSet(object):
                     sorted(label_files_t),
                 ):
                     data_dicts_train.append({"image": i_t, "label": o_t})
+                    print(data_dicts_train)
 
             for v in validation:
                 # special case: absolute paths
@@ -245,6 +246,7 @@ class PairedDataSet(object):
                     sorted(label_files_v),
                 ):
                     data_dicts_val.append({"image": i_v, "label": o_v})
+                    print(data_dicts_val)
 
             if test is not None:
                 for te in test:
