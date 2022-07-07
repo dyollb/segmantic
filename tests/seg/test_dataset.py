@@ -37,7 +37,8 @@ def test_PairedDataSet(tmp_path: Path):
 
 
 def test_load_from_json(tmp_path: Path):
-    image_dir, labels_dir = dataset_mockup(root_path=tmp_path, size=3)
+    image_dir, labels_dir = dataset_mockup(root_path=tmp_path, size=2)
+    image_dir_v, labels_dir_v = dataset_mockup(root_path=tmp_path, size=1)
 
     dataset_file = tmp_path / "dataset.json"
     dataset_file.write_text(
@@ -48,7 +49,13 @@ def test_load_from_json(tmp_path: Path):
                         "image": f"{image_dir.name}/*.nii.gz",
                         "label": f"{labels_dir.name}/*.nii.gz",
                     }
-                ]
+                ],
+                "validation": [
+                    {
+                        "image": f"{image_dir_v.name}/*.nii.gz",
+                        "label": f"{labels_dir_v.name}/*.nii.gz",
+                    }
+                ],
             }
         )
     )
@@ -65,6 +72,31 @@ def test_load_from_json(tmp_path: Path):
     assert len(ds.training_files()) == 2
     assert len(ds.validation_files()) == 1
     ds.check_matching_filenames()
+
+
+def test_kfold_crossval(tmp_path: Path):
+    output_dir = tmp_path.joinpath("k_fold_outputs")
+    output_dir.mkdir(exist_ok=True)
+
+    image_dir, labels_dir = dataset_mockup(root_path=tmp_path, size=21)
+    data_dicts = dataset.PairedDataSet.create_data_dict(
+        image_dir=image_dir, labels_dir=labels_dir
+    )
+
+    image_dir, labels_dir = dataset_mockup(root_path=tmp_path, size=3)
+    test_data_dicts = dataset.PairedDataSet.create_data_dict(
+        image_dir=image_dir, labels_dir=labels_dir
+    )
+
+    all_datafold_paths = dataset.PairedDataSet.kfold_crossval(
+        num_splits=7,
+        data_dicts=data_dicts,
+        output_dir=output_dir,
+        test_data_dicts=test_data_dicts,
+    )
+
+    assert len(all_datafold_paths) == 7
+    assert len(sorted(list(output_dir.glob("**..json")))) == 7
 
 
 def test_find_matching_files(tmp_path: Path):
