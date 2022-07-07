@@ -71,8 +71,8 @@ class PairedDataSet(object):
     def _create_split(
         self,
         data_dicts: List[Dict[str, Path]],
-        valid_split: float = None,
-        shuffle: bool = None,
+        valid_split: float,
+        shuffle: bool,
         random_seed: int = None,
         max_files: int = 0,
         test_data_dicts: List[Dict[str, Path]] = [],
@@ -83,12 +83,10 @@ class PairedDataSet(object):
             my_random = random.Random(random_seed)
             my_random.shuffle(data_dicts)
 
-        assert max_files is not None
         num_total = len(data_dicts)
         if max_files > 0:
             num_total = min(num_total, max_files)
 
-        assert valid_split is not None
         num_valid = int(valid_split * num_total)
         if num_total > 1 and valid_split > 0:
             num_valid = max(num_valid, 1)
@@ -191,14 +189,10 @@ class PairedDataSet(object):
         data_dicts_test: List[Dict[str, Path]] = []
 
         for p in [Path(f) for f in file_path]:
-            training = json.loads(p.read_text())["training"]
-            print(training)
-            validation = json.loads(p.read_text())["validation"]
-            print(validation)
-            if "test" in list(json.loads(p.read_text()).keys()):
-                test = json.loads(p.read_text())["test"]
-            else:
-                test = None
+            ds = json.loads(p.read_text())
+            training = ds["training"]
+            validation = ds["validation"]
+            test = ds["test"] if "test" in ds else []
 
             for t in training:
                 # special case: absolute paths
@@ -234,22 +228,21 @@ class PairedDataSet(object):
                     data_dicts_val.append({"image": i_v, "label": o_v})
                     print(data_dicts_val)
 
-            if test is not None:
-                for te in test:
-                    # special case: absolute paths
-                    if Path(te["image"]).is_absolute():
-                        image_files_te = [Path(te["image"])]
-                        label_files_te = [Path(te["label"])]
-                    else:
-                        image_files_te = list(p.parent.glob(te["image"]))
-                        label_files_te = list(p.parent.glob(te["label"]))
-                    assert len(image_files_te) == len(label_files_te)
+            for te in test:
+                # special case: absolute paths
+                if Path(te["image"]).is_absolute():
+                    image_files_te = [Path(te["image"])]
+                    label_files_te = [Path(te["label"])]
+                else:
+                    image_files_te = list(p.parent.glob(te["image"]))
+                    label_files_te = list(p.parent.glob(te["label"]))
+                assert len(image_files_te) == len(label_files_te)
 
-                    for i_te, o_te in zip(
-                        sorted(image_files_te),
-                        sorted(label_files_te),
-                    ):
-                        data_dicts_test.append({"image": i_te, "label": o_te})
+                for i_te, o_te in zip(
+                    sorted(image_files_te),
+                    sorted(label_files_te),
+                ):
+                    data_dicts_test.append({"image": i_te, "label": o_te})
 
         combined_ds = PairedDataSet()
         combined_ds._train_files = data_dicts_train
