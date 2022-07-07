@@ -723,7 +723,7 @@ def cross_validate(
         image_dir=image_dir, labels_dir=labels_dir
     )
 
-    test_data_dicts = None
+    test_data_dicts = []
 
     if test_image_dir and test_labels_dir:
         test_data_dicts = PairedDataSet.create_data_dict(

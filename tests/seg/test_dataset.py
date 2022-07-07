@@ -1,5 +1,4 @@
 import json
-import pprint
 from pathlib import Path
 from typing import Tuple
 
@@ -49,32 +48,14 @@ def test_load_from_json(tmp_path: Path):
             {
                 "training": [
                     {
-                        "image": f"{image_dir.name}/*.nii.gz",
-                        "label": f"{labels_dir.name}/*.nii.gz",
+                        "image": f"{image_dir.relative_to(tmp_path) / '*.nii.gz'}",
+                        "label": f"{labels_dir.relative_to(tmp_path)/ '*.nii.gz'}",
                     }
                 ],
                 "validation": [
                     {
-                        "image": f"{image_dir_v.name}/*.nii.gz",
-                        "label": f"{labels_dir_v.name}/*.nii.gz",
-                    }
-                ],
-            }
-        )
-    )
-    pprint.pprint(
-        json.dumps(
-            {
-                "training": [
-                    {
-                        "image": f"{image_dir.name}/*.nii.gz",
-                        "label": f"{labels_dir.name}/*.nii.gz",
-                    }
-                ],
-                "validation": [
-                    {
-                        "image": f"{image_dir_v.name}/*.nii.gz",
-                        "label": f"{labels_dir_v.name}/*.nii.gz",
+                        "image": f"{image_dir_v.relative_to(tmp_path)/'*.nii.gz'}",
+                        "label": f"{labels_dir_v.relative_to(tmp_path)/'*.nii.gz'}",
                     }
                 ],
             }

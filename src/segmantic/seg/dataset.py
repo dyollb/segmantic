@@ -64,6 +64,10 @@ class PairedDataSet(object):
         """Get list of 'image'/'label' pairs (dictionary) for validation"""
         return self._val_files
 
+    def test_files(self) -> Sequence[Dict[str, Path]]:
+        """Get list of 'image'/'label' pairs (dictionary) for test"""
+        return self._test_files
+
     def _create_split(
         self,
         data_dicts: List[Dict[str, Path]],
@@ -71,41 +75,27 @@ class PairedDataSet(object):
         shuffle: bool = None,
         random_seed: int = None,
         max_files: int = 0,
-        cross_val: bool = False,
-        train_idx: List[int] = None,
-        val_idx: List[int] = None,
-        test_data_dicts: List[Dict[str, Path]] = None,
+        test_data_dicts: List[Dict[str, Path]] = [],
     ):
-        if not cross_val:
-            assert shuffle is not None
-            if shuffle:
-                my_random = random.Random(random_seed)
-                my_random.shuffle(data_dicts)
+        self._test_files = test_data_dicts
 
-            assert max_files is not None
-            num_total = len(data_dicts)
-            if max_files > 0:
-                num_total = min(num_total, max_files)
+        if shuffle:
+            my_random = random.Random(random_seed)
+            my_random.shuffle(data_dicts)
 
-            assert valid_split is not None
-            num_valid = int(valid_split * num_total)
-            if num_total > 1 and valid_split > 0:
-                num_valid = max(num_valid, 1)
+        assert max_files is not None
+        num_total = len(data_dicts)
+        if max_files > 0:
+            num_total = min(num_total, max_files)
 
-            # use first `num_valid` files for validation, rest for training
-            self._train_files = data_dicts[num_valid:num_total]
-            self._val_files = data_dicts[:num_valid]
-            if test_data_dicts is not None:
-                self._test_files = test_data_dicts
+        assert valid_split is not None
+        num_valid = int(valid_split * num_total)
+        if num_total > 1 and valid_split > 0:
+            num_valid = max(num_valid, 1)
 
-        else:
-            if train_idx is not None and val_idx is not None:
-                self._train_files = [data_dicts[index] for index in train_idx]
-                self._val_files = [data_dicts[index] for index in val_idx]
-            if test_data_dicts is not None:
-                self._test_files = test_data_dicts
-            else:
-                raise ValueError("Please Assign train and val_idx")
+        # use first `num_valid` files for validation, rest for training
+        self._train_files = data_dicts[num_valid:num_total]
+        self._val_files = data_dicts[:num_valid]
 
     def check_matching_filenames(self):
         """Check if the files names are identical except for any prefix or suffix"""
@@ -156,7 +146,7 @@ class PairedDataSet(object):
         num_splits: int,
         data_dicts: List[Dict[str, Path]],
         output_dir: Path,
-        test_data_dicts: List[Dict[str, Path]] = None,
+        test_data_dicts: List[Dict[str, Path]] = [],
     ) -> List:
         kf = KFold(n_splits=num_splits)
 
@@ -166,15 +156,11 @@ class PairedDataSet(object):
         image_idx = np.arange(len(data_dicts))
         all_dataset_paths: List[Path] = []
 
-        for count, (train_idx, test_idx) in enumerate(kf.split(image_idx, image_idx)):
+        for count, (train_idx, val_idx) in enumerate(kf.split(image_idx, image_idx)):
             temp_dataset = PairedDataSet()
-            temp_dataset._create_split(
-                data_dicts=data_dicts,
-                cross_val=True,
-                train_idx=train_idx,
-                val_idx=test_idx,
-                test_data_dicts=test_data_dicts,
-            )
+            temp_dataset._train_files = [data_dicts[i] for i in train_idx]
+            temp_dataset._val_files = [data_dicts[i] for i in val_idx]
+            temp_dataset._test_files = test_data_dicts
 
             temp_dataset_path = all_fold_files_dir.joinpath(f"fold_{count}.json")
             temp_dataset_path.write_text(temp_dataset.dump_dataset())
