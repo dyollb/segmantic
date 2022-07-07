@@ -174,7 +174,7 @@ class Net(pl.LightningModule):
                 spatial_size=self.spatial_size,
                 num_classes=self.num_classes,
                 num_samples=self.num_samples,
-                ratios=[0 if x == 0 else 1 for x in range(len(self.num_classes))],
+                ratios=[0 if x == 0 else 1 for x in range(self.num_classes)],
             )
         ]
 
@@ -377,7 +377,6 @@ def train(
     dataset: Union[Path, List[Path]] = [],
     image_dir: Path = None,
     labels_dir: Path = None,
-    cross_val: bool = False,
     output_dir: Path,
     checkpoint_file: Path = None,
     num_classes: int = 0,
@@ -448,11 +447,7 @@ def train(
     if image_dir and labels_dir:
         net.dataset = PairedDataSet(image_dir=image_dir, labels_dir=labels_dir)
     elif dataset:
-        if not cross_val:
-            net.dataset = PairedDataSet.load_from_json(dataset)
-        else:
-            assert isinstance(dataset, Path)
-            net.dataset = PairedDataSet.load_from_cross_val_json(Path(dataset))
+        net.dataset = PairedDataSet.load_from_json(dataset)
     else:
         raise ValueError(
             "Either provide a dataset file, or an image_dir, labels_dir pair."
@@ -682,7 +677,7 @@ def predict(
         else:
             np.savetxt(
                 output_dir.joinpath(
-                    "mean_dice_" + str(model_file.stem) + "_generalized_score.txt"
+                    f"mean_dice_{model_file.stem}_generalized_score.txt"
                 ),
                 all_mean_dice,
                 delimiter=",",
@@ -710,9 +705,8 @@ def cross_validate(
     config_files_dir: Path,
     checkpoint_file: Path = None,
     max_epochs: int = 100,
-    generalize_test: bool = False,
-    generalize_img_dir: Optional[Path] = None,
-    generalize_lbl_dir: Optional[Path] = None,
+    test_image_dir: Optional[Path] = None,
+    test_labels_dir: Optional[Path] = None,
     n_splits: int = 7,
     save_nifti: bool = True,
     gpu_ids: List[int] = [0],
@@ -728,8 +722,19 @@ def cross_validate(
     data_dicts = PairedDataSet.create_data_dict(
         image_dir=image_dir, labels_dir=labels_dir
     )
+
+    test_data_dicts = None
+
+    if test_image_dir and test_labels_dir:
+        test_data_dicts = PairedDataSet.create_data_dict(
+            image_dir=test_image_dir, labels_dir=test_labels_dir
+        )
+
     all_datafold_paths: List[Path] = PairedDataSet.kfold_crossval(
-        num_splits=n_splits, data_dicts=data_dicts, output_dir=output_dir
+        num_splits=n_splits,
+        data_dicts=data_dicts,
+        output_dir=output_dir,
+        test_data_dicts=test_data_dicts,
     )
 
     for config_file in Path(config_files_dir).iterdir():
@@ -768,15 +773,11 @@ def cross_validate(
             )
             print(result)
             print("training finished")
-            if (
-                generalize_test
-                and generalize_img_dir is not None
-                and generalize_lbl_dir is not None
-            ):
-                assert generalize_img_dir.is_dir() and generalize_lbl_dir.is_dir()
+            if test_image_dir is not None and test_labels_dir is not None:
+                assert test_image_dir.is_dir() and test_labels_dir.is_dir()
 
-                test_images = sorted(list(generalize_img_dir.glob(".nii.gz")))
-                test_labels = sorted(list(generalize_lbl_dir.glob(".nii.gz")))
+                test_images = sorted(list(test_image_dir.glob(".nii.gz")))
+                test_labels = sorted(list(test_labels_dir.glob(".nii.gz")))
 
                 assert len(test_images) == len(test_labels)
 
@@ -796,4 +797,4 @@ def cross_validate(
                             gpu_ids=gpu_ids,
                         )
             else:
-                raise ValueError("generalize_img_dir and _lbl_dir need to be provided.")
+                raise ValueError("test_image_dir and _lbl_dir need to be provided.")

@@ -1,7 +1,7 @@
 import json
 import random
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Dict, List, Sequence, Union
 
 import numpy as np
 from sklearn.model_selection import KFold
@@ -49,7 +49,6 @@ class PairedDataSet(object):
         shuffle: bool = True,
         random_seed: int = None,
         max_files: int = 0,
-        cross_val: bool = False,
     ):
 
         data_dicts = self.create_data_dict(
@@ -68,13 +67,14 @@ class PairedDataSet(object):
     def _create_split(
         self,
         data_dicts: List[Dict[str, Path]],
-        valid_split: Optional[float] = None,
-        shuffle: Optional[bool] = None,
-        random_seed: Optional[int] = None,
-        max_files: Optional[int] = 0,
+        valid_split: float = None,
+        shuffle: bool = None,
+        random_seed: int = None,
+        max_files: int = 0,
         cross_val: bool = False,
-        train_idx: Optional[List[int]] = None,
-        val_idx: Optional[List[int]] = None,
+        train_idx: List[int] = None,
+        val_idx: List[int] = None,
+        test_data_dicts: List[Dict[str, Path]] = None,
     ):
         if not cross_val:
             assert shuffle is not None
@@ -95,10 +95,15 @@ class PairedDataSet(object):
             # use first `num_valid` files for validation, rest for training
             self._train_files = data_dicts[num_valid:num_total]
             self._val_files = data_dicts[:num_valid]
+            if test_data_dicts is not None:
+                self._test_files = test_data_dicts
+
         else:
             if train_idx is not None and val_idx is not None:
                 self._train_files = [data_dicts[index] for index in train_idx]
                 self._val_files = [data_dicts[index] for index in val_idx]
+            if test_data_dicts is not None:
+                self._test_files = test_data_dicts
             else:
                 raise ValueError("Please Assign train and val_idx")
 
@@ -112,23 +117,15 @@ class PairedDataSet(object):
                     f"The pair image/label pair {d['image']} : {d['label']} doesn't correspond."
                 )
 
-    def dump_dataset(self, cross_val: bool = False) -> str:
-        if not cross_val:
-            return json.dumps(
-                {
-                    "training": self._train_files + self._val_files,
-                    "split": [len(self._train_files), len(self._val_files)],
-                },
-                cls=PathEncoder,
-            )
-        else:
-            return json.dumps(
-                {
-                    "training": self._train_files,
-                    "validation": self._val_files,
-                },
-                cls=PathEncoder,
-            )
+    def dump_dataset(self) -> str:
+        return json.dumps(
+            {
+                "training": self._train_files,
+                "validation": self._val_files,
+                "test": self._test_files,
+            },
+            cls=PathEncoder,
+        )
 
     @staticmethod
     def create_data_dict(
@@ -156,7 +153,10 @@ class PairedDataSet(object):
 
     @staticmethod
     def kfold_crossval(
-        num_splits: int, data_dicts: List[Dict[str, Path]], output_dir: Path
+        num_splits: int,
+        data_dicts: List[Dict[str, Path]],
+        output_dir: Path,
+        test_data_dicts: List[Dict[str, Path]] = None,
     ) -> List:
         kf = KFold(n_splits=num_splits)
 
@@ -173,10 +173,11 @@ class PairedDataSet(object):
                 cross_val=True,
                 train_idx=train_idx,
                 val_idx=test_idx,
+                test_data_dicts=test_data_dicts,
             )
 
             temp_dataset_path = all_fold_files_dir.joinpath(f"fold_{count}")
-            temp_dataset_path.write_text(temp_dataset.dump_dataset(cross_val=True))
+            temp_dataset_path.write_text(temp_dataset.dump_dataset())
             all_dataset_paths.append(temp_dataset_path)
 
         return all_dataset_paths
@@ -184,10 +185,6 @@ class PairedDataSet(object):
     @staticmethod
     def load_from_json(
         file_path: Union[Path, List[Path]],
-        *,
-        valid_split: float = 0.2,
-        shuffle: bool = True,
-        random_seed: int = None,
     ):
         """Loads one or more datasets from json descriptor files and returns a single combined dataset
 
@@ -199,76 +196,71 @@ class PairedDataSet(object):
             "training": [{"image": "image/*.nii.gz", "label": "label/*.nii.gz"}],
         }
         """
+
         if isinstance(file_path, (Path, str)):
             file_path = [file_path]
 
-        data_dicts: List[Dict[str, Path]] = []
-
-        for p in (Path(f) for f in file_path):
-            training = json.loads(p.read_text())["training"]
-            for d in training:
-                # special case: absolute paths
-                if Path(d["image"]).is_absolute():
-                    image_files = [Path(d["image"])]
-                    label_files = [Path(d["label"])]
-                else:
-                    image_files = list(p.parent.glob(d["image"]))
-                    label_files = list(p.parent.glob(d["label"]))
-                    assert len(image_files) == len(label_files)
-
-                for i, o in zip(sorted(image_files), sorted(label_files)):
-                    data_dicts.append({"image": i, "label": o})
-
-        combined_ds = PairedDataSet()
-        combined_ds._create_split(data_dicts, valid_split, shuffle, random_seed)
-        return combined_ds
-
-    @staticmethod
-    def load_from_cross_val_json(
-        file_path: Path,
-    ):
-        """Loads one or more datasets from json descriptor files and returns a single combined dataset
-
-        The json file convention follows the MSD dataset, also used e.g. by nnUNet.
-
-        The training data is loaded from the 'training' section. Glob expressions are
-        supported as well as a full list of files:
-        {
-            "training": [{"image": "image/*.nii.gz", "label": "label/*.nii.gz"}],
-        }
-        """
-
         data_dicts_train: List[Dict[str, Path]] = []
         data_dicts_val: List[Dict[str, Path]] = []
+        data_dicts_test: List[Dict[str, Path]] = []
 
-        training = json.loads(file_path.read_text())["training"]
-        validation = json.loads(file_path.read_text())["validation"]
+        for p in [Path(f) for f in file_path]:
+            training = json.loads(p.read_text())["training"]
+            validation = json.loads(p.read_text())["validation"]
+            test = json.loads(p.read_text())["test"]
 
-        for t, v in zip(training, validation):
-            # special case: absolute paths
-            if Path(t["image"]).is_absolute():
-                image_files_t = [Path(t["image"])]
-                label_files_t = [Path(t["label"])]
-                image_files_v = [Path(v["image"])]
-                label_files_v = [Path(v["label"])]
-            else:
-                image_files_t = list(file_path.parent.glob(t["image"]))
-                label_files_t = list(file_path.parent.glob(t["label"]))
-                image_files_v = list(file_path.parent.glob(v["image"]))
-                label_files_v = list(file_path.parent.glob(v["label"]))
-            assert len(image_files_t) == len(label_files_t)
-            assert len(image_files_v) == len(label_files_v)
+            for t in training:
+                # special case: absolute paths
+                if Path(t["image"]).is_absolute():
+                    image_files_t = [Path(t["image"])]
+                    label_files_t = [Path(t["label"])]
+                else:
+                    image_files_t = list(p.parent.glob(t["image"]))
+                    label_files_t = list(p.parent.glob(t["label"]))
+                assert len(image_files_t) == len(label_files_t)
 
-            for i_t, o_t, i_v, o_v in zip(
-                sorted(image_files_t),
-                sorted(label_files_t),
-                sorted(label_files_v),
-                sorted(label_files_v),
-            ):
-                data_dicts_train.append({"image": i_t, "label": o_t})
-                data_dicts_val.append({"image": i_v, "label": o_v})
+                for i_t, o_t in zip(
+                    sorted(image_files_t),
+                    sorted(label_files_t),
+                ):
+                    data_dicts_train.append({"image": i_t, "label": o_t})
+
+            for v in validation:
+                # special case: absolute paths
+                if Path(v["image"]).is_absolute():
+                    image_files_v = [Path(v["image"])]
+                    label_files_v = [Path(v["label"])]
+                else:
+                    image_files_v = list(p.parent.glob(v["image"]))
+                    label_files_v = list(p.parent.glob(v["label"]))
+                assert len(image_files_v) == len(label_files_v)
+
+                for i_v, o_v in zip(
+                    sorted(image_files_v),
+                    sorted(label_files_v),
+                ):
+                    data_dicts_val.append({"image": i_v, "label": o_v})
+
+            if test is not None:
+                for te in test:
+                    # special case: absolute paths
+                    if Path(te["image"]).is_absolute():
+                        image_files_te = [Path(te["image"])]
+                        label_files_te = [Path(te["label"])]
+                    else:
+                        image_files_te = list(p.parent.glob(te["image"]))
+                        label_files_te = list(p.parent.glob(te["label"]))
+                    assert len(image_files_te) == len(label_files_te)
+
+                    for i_te, o_te in zip(
+                        sorted(image_files_te),
+                        sorted(label_files_te),
+                    ):
+                        data_dicts_test.append({"image": i_te, "label": o_te})
 
         combined_ds = PairedDataSet()
         combined_ds._train_files = data_dicts_train
         combined_ds._val_files = data_dicts_val
+        if test is not None:
+            combined_ds._test_files = data_dicts_test
         return combined_ds
