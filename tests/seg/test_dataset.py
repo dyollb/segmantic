@@ -1,4 +1,5 @@
 import json
+import pprint
 from pathlib import Path
 from typing import Tuple
 
@@ -61,7 +62,24 @@ def test_load_from_json(tmp_path: Path):
             }
         )
     )
-
+    pprint.pprint(
+        json.dumps(
+            {
+                "training": [
+                    {
+                        "image": f"{image_dir.name}/*.nii.gz",
+                        "label": f"{labels_dir.name}/*.nii.gz",
+                    }
+                ],
+                "validation": [
+                    {
+                        "image": f"{image_dir_v.name}/*.nii.gz",
+                        "label": f"{labels_dir_v.name}/*.nii.gz",
+                    }
+                ],
+            }
+        )
+    )
     ds = dataset.PairedDataSet.load_from_json(dataset_file)
     assert len(ds.training_files()) == 2
     assert len(ds.validation_files()) == 1

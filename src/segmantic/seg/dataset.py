@@ -206,7 +206,9 @@ class PairedDataSet(object):
 
         for p in [Path(f) for f in file_path]:
             training = json.loads(p.read_text())["training"]
+            print(training)
             validation = json.loads(p.read_text())["validation"]
+            print(validation)
             if "test" in list(json.loads(p.read_text()).keys()):
                 test = json.loads(p.read_text())["test"]
             else:
