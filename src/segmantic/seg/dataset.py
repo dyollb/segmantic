@@ -176,7 +176,7 @@ class PairedDataSet(object):
                 test_data_dicts=test_data_dicts,
             )
 
-            temp_dataset_path = all_fold_files_dir.joinpath(f"fold_{count}")
+            temp_dataset_path = all_fold_files_dir.joinpath(f"fold_{count}.json")
             temp_dataset_path.write_text(temp_dataset.dump_dataset())
             all_dataset_paths.append(temp_dataset_path)
 
@@ -209,6 +209,8 @@ class PairedDataSet(object):
             validation = json.loads(p.read_text())["validation"]
             if "test" in list(json.loads(p.read_text()).keys()):
                 test = json.loads(p.read_text())["test"]
+            else:
+                test = None
 
             for t in training:
                 # special case: absolute paths
