@@ -703,12 +703,9 @@ def cross_validate(
     tissue_list: Path,
     output_dir: Path,
     config_files_dir: Path,
-    checkpoint_file: Path = None,
-    max_epochs: int = 100,
     test_image_dir: Optional[Path] = None,
     test_labels_dir: Optional[Path] = None,
     n_splits: int = 7,
-    save_nifti: bool = True,
     gpu_ids: List[int] = [0],
 ):
     print_config()
@@ -741,13 +738,12 @@ def cross_validate(
         # ToDo: add yaml file support
         assert config_file.suffix in [".json"]
 
-        output_dir_scenario = output_dir.joinpath(str(config_file.name))
-        if not output_dir_scenario.exists():
-            output_dir_scenario.mkdir()
+        output_dir_scenario = output_dir / config_file.name
+        output_dir_scenario.mkdir(exist_ok=True)
 
         for count, dataset_path in enumerate(all_datafold_paths):
 
-            current_output = output_dir_scenario.joinpath(str(count))
+            current_output = output_dir_scenario / str(count)
             print(current_output)
 
             current_output.mkdir(exist_ok=True)
@@ -797,4 +793,6 @@ def cross_validate(
                             gpu_ids=gpu_ids,
                         )
             else:
-                raise ValueError("test_image_dir and _lbl_dir need to be provided.")
+                raise ValueError(
+                    "test_image_dir and test_labels_dir need to be provided."
+                )
