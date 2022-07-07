@@ -9,8 +9,8 @@ def dataset_mockup(
     root_path: Path, label_suffix: str = "", size: int = 3
 ) -> Tuple[Path, Path]:
     image_dir, labels_dir = root_path / "image", root_path / "label"
-    image_dir.mkdir()
-    labels_dir.mkdir()
+    image_dir.mkdir(exist_ok=True)
+    labels_dir.mkdir(exist_ok=True)
 
     for idx in range(size):
         (image_dir / f"img-{idx}.nii.gz").touch()
