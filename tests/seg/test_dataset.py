@@ -53,7 +53,7 @@ def test_load_from_json(tmp_path: Path):
         )
     )
 
-    ds = dataset.PairedDataSet.load_from_json(dataset_file, valid_split=0.2)
+    ds = dataset.PairedDataSet.load_from_json(dataset_file)
     assert len(ds.training_files()) == 2
     assert len(ds.validation_files()) == 1
     ds.check_matching_filenames()
@@ -61,7 +61,7 @@ def test_load_from_json(tmp_path: Path):
     # now dump and try to re-load
     dataset_file2 = tmp_path / "dataset_dump.json"
     dataset_file2.write_text(ds.dump_dataset())
-    ds = dataset.PairedDataSet.load_from_json(dataset_file2, valid_split=0.2)
+    ds = dataset.PairedDataSet.load_from_json(dataset_file2)
     assert len(ds.training_files()) == 2
     assert len(ds.validation_files()) == 1
     ds.check_matching_filenames()
