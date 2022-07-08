@@ -37,6 +37,28 @@ def find_matching_files(input_globs: List[Path], verbose: bool = True):
     return output_files
 
 
+def create_data_dict(
+    list_to_convert: List[Dict[str, str]], p: Path, data_dicts: List[Dict[str, Path]]
+):
+    for element in list_to_convert:
+        # special case: absolute paths
+        if Path(element["image"]).is_absolute():
+            image_files = [Path(element["image"])]
+            label_files = [Path(element["label"])]
+        else:
+            image_files = list(p.parent.glob(element["image"]))
+            label_files = list(p.parent.glob(element["label"]))
+        assert len(image_files) == len(label_files)
+
+        for i_element, o_element in zip(
+            sorted(image_files),
+            sorted(label_files),
+        ):
+            data_dicts.append({"image": i_element, "label": o_element})
+
+    return data_dicts
+
+
 class PairedDataSet(object):
     def __init__(
         self,
@@ -194,55 +216,17 @@ class PairedDataSet(object):
             validation = ds["validation"]
             test = ds["test"] if "test" in ds else []
 
-            for t in training:
-                # special case: absolute paths
-                if Path(t["image"]).is_absolute():
-                    image_files_t = [Path(t["image"])]
-                    label_files_t = [Path(t["label"])]
-                else:
-                    image_files_t = list(p.parent.glob(t["image"]))
-                    label_files_t = list(p.parent.glob(t["label"]))
-                assert len(image_files_t) == len(label_files_t)
+            data_dicts_train = create_data_dict(
+                list_to_convert=training, p=p, data_dicts=data_dicts_train
+            )
 
-                for i_t, o_t in zip(
-                    sorted(image_files_t),
-                    sorted(label_files_t),
-                ):
-                    data_dicts_train.append({"image": i_t, "label": o_t})
-                    print(data_dicts_train)
+            data_dicts_val = create_data_dict(
+                list_to_convert=validation, p=p, data_dicts=data_dicts_val
+            )
 
-            for v in validation:
-                # special case: absolute paths
-                if Path(v["image"]).is_absolute():
-                    image_files_v = [Path(v["image"])]
-                    label_files_v = [Path(v["label"])]
-                else:
-                    image_files_v = list(p.parent.glob(v["image"]))
-                    label_files_v = list(p.parent.glob(v["label"]))
-                assert len(image_files_v) == len(label_files_v)
-
-                for i_v, o_v in zip(
-                    sorted(image_files_v),
-                    sorted(label_files_v),
-                ):
-                    data_dicts_val.append({"image": i_v, "label": o_v})
-                    print(data_dicts_val)
-
-            for te in test:
-                # special case: absolute paths
-                if Path(te["image"]).is_absolute():
-                    image_files_te = [Path(te["image"])]
-                    label_files_te = [Path(te["label"])]
-                else:
-                    image_files_te = list(p.parent.glob(te["image"]))
-                    label_files_te = list(p.parent.glob(te["label"]))
-                assert len(image_files_te) == len(label_files_te)
-
-                for i_te, o_te in zip(
-                    sorted(image_files_te),
-                    sorted(label_files_te),
-                ):
-                    data_dicts_test.append({"image": i_te, "label": o_te})
+            data_dicts_test = create_data_dict(
+                list_to_convert=test, p=p, data_dicts=data_dicts_test
+            )
 
         combined_ds = PairedDataSet()
         combined_ds._train_files = data_dicts_train
