@@ -99,6 +99,11 @@ def test_kfold_crossval(tmp_path: Path):
     assert len(all_datafold_paths) == 7
     assert len(sorted(list(datafolds_dir.glob("*.json")))) == 7
 
+    for dpath in all_datafold_paths:
+        assert Path(dpath).is_file()
+        temp_ds = dataset.PairedDataSet.load_from_json(dpath)
+        temp_ds.check_matching_filenames()
+
 
 def test_find_matching_files(tmp_path: Path):
     image_dir, labels_dir = dataset_mockup(
