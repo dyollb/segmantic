@@ -35,7 +35,8 @@ dependencies = [
     "torch",
     "torchvision",
     "typer",
-    "typing-extensions"
+    "typing-extensions",
+    "adabelief_pytorch"
 ]
 
 [project.optional-dependencies]
@@ -76,5 +77,5 @@ module = "segmantic.prepro.*,segmantic.util.*"
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = "itk.*,PIL,matplotlib.*,torch,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml,scipy.*,vtk"
+module = "itk.*,PIL,matplotlib.*,torch,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml,scipy.*,vtk,adabelief_pytorch"
 ignore_missing_imports = true
