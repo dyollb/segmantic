@@ -2,6 +2,7 @@ import json
 import os
 import subprocess as sp
 import sys
+from functools import partial
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -9,6 +10,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.utils.data
+import yaml
 from adabelief_pytorch import AdaBelief
 from monai.bundle import ConfigParser
 from monai.config import print_config
@@ -736,7 +738,15 @@ def cross_validate(
 
     for config_file in Path(config_files_dir).iterdir():
         # ToDo: add yaml file support
-        assert config_file.suffix in [".json"]
+        assert config_file.suffix in [".json", ".yaml"]
+
+        is_json = config_file and config_file.suffix.lower() == ".json"
+        dumps = (
+            partial(json.dumps, indent=4)
+            if is_json
+            else partial(yaml.safe_dump, sort_keys=False)
+        )
+        loads = json.loads if is_json else yaml.safe_load
 
         output_dir_scenario = output_dir / config_file.name
         output_dir_scenario.mkdir(exist_ok=True)
@@ -748,20 +758,21 @@ def cross_validate(
 
             current_output.mkdir(exist_ok=True)
 
-            data = json.loads(config_file.read_text())
+            data: dict = loads(config_file.read_text())
+
             data["dataset"] = str(dataset_path)
             data["output_dir"] = str(current_output)
-            current_layers = data["layers"]
+            current_layers = data["channels"]
             current_strides = data["strides"]
-            with open(config_file, "w") as f:
-                json.dump(data, f, indent=4)
+
+            config_file.write_text(dumps(data))
 
             print("start training")
 
             result = sp.run(
                 [
                     sys.executable,
-                    str(Path.cwd().parents[2].joinpath("scripts/run_monai_unet.py")),
+                    str(Path.cwd().joinpath("run_monai_unet.py")),
                     "train-config",
                     "-c",
                     config_file,
@@ -793,6 +804,4 @@ def cross_validate(
                             gpu_ids=gpu_ids,
                         )
             else:
-                raise ValueError(
-                    "test_image_dir and test_labels_dir need to be provided."
-                )
+                continue
