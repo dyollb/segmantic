@@ -1,12 +1,17 @@
 import json
 import os
+import subprocess as sp
+import sys
+from functools import partial
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.utils.data
+import yaml
+from adabelief_pytorch import AdaBelief
 from monai.bundle import ConfigParser
 from monai.config import print_config
 from monai.data import CacheDataset, Dataset, decollate_batch, list_data_collate
@@ -42,7 +47,11 @@ from monai.transforms import (
 from monai.transforms.spatial.dictionary import Spacingd
 from monai.transforms.transform import Transform
 from monai.utils import set_determinism
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import (
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
+)
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from ..prepro.labels import load_tissue_list
@@ -61,6 +70,22 @@ class Net(pl.LightningModule):
     augment_spatial: bool = False
     best_val_dice = 0
     best_val_epoch = 0
+    num_samples: int = 4
+    optimizer: dict = {
+        "optimizer": "Adam",
+        "lr": 1e-4,
+        "momentum": 0.9,
+        "epsilon": 1e-8,
+        "amsgrad": False,
+        "weight_decouple": False,
+    }
+    lr_scheduling: dict = {
+        "scheduler": "Constant",
+        "factor": 0.5,
+        "patience": 10,
+        "T_0": 50,
+        "T_multi": 1,
+    }
 
     def __init__(
         self,
@@ -68,6 +93,9 @@ class Net(pl.LightningModule):
         num_channels: int = 1,
         spatial_dims: int = 3,
         spatial_size: Sequence[int] = None,
+        channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
+        strides: Tuple[int, ...] = (2, 2, 2, 2),
+        dropout: float = 0.0,
     ):
         super().__init__()
 
@@ -77,11 +105,14 @@ class Net(pl.LightningModule):
             spatial_dims=spatial_dims,
             in_channels=num_channels,
             out_channels=num_classes,
-            channels=(16, 32, 64, 128, 256),
-            strides=(2, 2, 2, 2),
+            channels=channels,
+            strides=strides,
+            dropout=dropout,
             num_res_units=2,
             norm=Norm.BATCH,
         )
+        # ToDo: make true/false dependant on if optimizer is default or not
+        self.automatic_optimization = False
         self.spatial_size = spatial_size if spatial_size else [96] * 3
         self.loss_function = DiceLoss(to_onehot_y=True, softmax=True)
         self.post_pred = Compose(
@@ -114,7 +145,7 @@ class Net(pl.LightningModule):
             EnsureChannelFirstd(keys=keys),
             Orientationd(keys=keys, axcodes="RAS"),
             NormalizeIntensityd(keys="image", nonzero=False, channel_wise=True),
-            CropForegroundd(keys=keys, source_key="image"),
+            CropForegroundd(keys=keys, source_key="label"),
             EnsureTyped(keys=keys, dtype=np.float32, device=torch.device(self.device)),
         ]
 
@@ -137,14 +168,15 @@ class Net(pl.LightningModule):
             xforms.append(
                 RandZoomd(keys=keys, prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=mode)
             )
-
+        # Set probability of background label being chosen as corp center to 0 and rest to 1.
         xforms += [
             RandCropByLabelClassesd(
                 keys=keys,
                 label_key="label",
                 spatial_size=self.spatial_size,
                 num_classes=self.num_classes,
-                num_samples=4,
+                num_samples=self.num_samples,
+                ratios=[0 if x == 0 else 1 for x in range(self.num_classes)],
             )
         ]
 
@@ -238,13 +270,60 @@ class Net(pl.LightningModule):
         return val_loader
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self._model.parameters(), 1e-4)
-        return optimizer
+        if self.optimizer["optimizer"] == "SGD":
+            optimizer = torch.optim.SGD(
+                self._model.parameters(),
+                lr=self.optimizer["lr"],
+                momentum=self.optimizer["momentum"],
+            )
+        elif self.optimizer["optimizer"] == "Adam":
+            optimizer = torch.optim.Adam(
+                self._model.parameters(),
+                lr=self.optimizer["lr"],
+                amsgrad=self.optimizer["amsgrad"],
+            )
+        elif self.optimizer["optimizer"] == "AdaBelief":
+            optimizer = AdaBelief(
+                self._model.parameters(),
+                lr=self.optimizer["lr"],
+                eps=self.optimizer["epsilon"],  # try 1e-8 and 1e-16
+                betas=(0.9, 0.999),
+                weight_decouple=self.optimizer["weight_decouple"],  # Try True/False
+                fixed_decay=False,
+                rectify=False,
+            )
+
+        if self.lr_scheduling["scheduler"] == "Constant":
+            lr_scheduler = torch.optim.lr_scheduler.ConstantLR(
+                optimizer=optimizer, factor=1, total_iters=0
+            )
+
+        elif self.lr_scheduling["scheduler"] == "ReduceOnPlateau":
+            lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer=optimizer,
+                mode="min",
+                factor=self.lr_scheduling["factor"],
+                patience=self.lr_scheduling["patience"],
+                verbose=True,
+            )
+
+        elif self.lr_scheduling["scheduler"] == "Cosine":
+            lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer=optimizer,
+                T_0=self.lr_scheduling["T_0"],
+                T_mult=self.lr_scheduling["T_multi"],
+                eta_min=0,
+            )
+        return [optimizer], [lr_scheduler]
 
     def training_step(self, batch, batch_idx):
         images, labels = batch["image"], batch["label"]
         output = self.forward(images)
+        optimizer = self.optimizers()
+        optimizer.zero_grad()
         loss = self.loss_function(output, labels)
+        self.manual_backward(loss)
+        optimizer.step()
         tensorboard_logs = {"train_loss": loss.item()}
         return {"loss": loss, "log": tensorboard_logs}
 
@@ -269,6 +348,13 @@ class Net(pl.LightningModule):
         mean_val_dice = self.dice_metric.aggregate().item()
         self.dice_metric.reset()
         mean_val_loss = torch.tensor(val_loss / num_items)
+
+        scheduler = self.lr_schedulers()
+        if self.lr_scheduling["scheduler"] == "ReduceOnPlateau":
+            scheduler.step(mean_val_loss)
+        else:
+            scheduler.step()
+
         tensorboard_logs = {
             "val_dice": mean_val_dice,
             "val_loss": mean_val_loss,
@@ -279,6 +365,7 @@ class Net(pl.LightningModule):
         print(
             f"\ncurrent epoch: {self.current_epoch} "
             f"mean val dice: {mean_val_dice:.4f}"
+            f"\ncurrent mean loss: {mean_val_loss:.4f}"
             f"\nbest mean dice: {self.best_val_dice:.4f} "
             f"at epoch: {self.best_val_epoch}"
         )
@@ -302,12 +389,37 @@ def train(
     augmentation: dict = {},
     augment_intensity: bool = False,
     augment_spatial: bool = False,
+    channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
+    strides: Tuple[int, ...] = (2, 2, 2, 2),
+    dropout: float = 0.0,
+    num_samples: int = 4,
+    optimizer=None,
+    lr_scheduling=None,
     max_epochs: int = 600,
+    early_stop_patience: int = 50,
     mixed_precision: bool = True,
     cache_rate: float = 1.0,
     gpu_ids: List[int] = [0],
     tissue_list: Path = None,
 ) -> pl.LightningModule:
+
+    if optimizer is None:
+        optimizer = {
+            "optimizer": "Adam",
+            "lr": 1e-4,
+            "momentum": 0.9,
+            "epsilon": 1e-8,
+            "amsgrad": False,
+            "weight_decouple": False,
+        }
+    if lr_scheduling is None:
+        lr_scheduling = {
+            "scheduler": "Constant",
+            "factor": 0.5,
+            "patience": 10,
+            "T_0": 50,
+            "T_multi": 1,
+        }
 
     # initialise the LightningModule
     if checkpoint_file and Path(checkpoint_file).exists():
@@ -330,6 +442,9 @@ def train(
             num_channels=num_channels,
             num_classes=num_classes,
             spatial_size=spatial_size,
+            channels=channels,
+            strides=strides,
+            dropout=dropout,
         )
     if image_dir and labels_dir:
         net.dataset = PairedDataSet(image_dir=image_dir, labels_dir=labels_dir)
@@ -343,6 +458,9 @@ def train(
     net.config_augmentation = augmentation
     net.augment_intensity = augment_intensity
     net.augment_spatial = augment_spatial
+    net.num_samples = num_samples
+    net.optimizer = optimizer
+    net.lr_scheduling = lr_scheduling
     net.cache_rate = cache_rate
 
     # store dataset used for training
@@ -361,15 +479,28 @@ def train(
         save_top_k=3,
     )
 
+    # defining early stopping. When val loss improves less than 0 over 30 epochs, the training will be stopped.
+    early_stop_callback = EarlyStopping(
+        monitor="val_dice",
+        min_delta=0.00,
+        patience=early_stop_patience,
+        mode="max",
+        check_finite=True,
+    )
+
+    lr_monitor = LearningRateMonitor(log_momentum=True, logging_interval="epoch")
+
     print_config()
 
     # initialise Lightning's trainer.
+    # ToDo: Add self.batch_size to init and actually make the auto_scale_batch_size work.
     trainer = pl.Trainer(
         gpus=gpu_ids,
+        # auto_scale_batch_size=True,
         precision=16 if mixed_precision else 32,
         max_epochs=max_epochs,
         logger=tb_logger,
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback, early_stop_callback, lr_monitor],
         num_sanity_val_steps=1,
     )
 
@@ -390,8 +521,11 @@ def predict(
     test_labels: Optional[List[Path]] = None,
     output_dir: Path = None,
     tissue_dict: Dict[str, int] = None,
+    channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
+    strides: Tuple[int, ...] = (2, 2, 2, 2),
+    dropout: float = 0.0,
     spacing: Sequence[float] = [],
-    gpu_ids: list = [],
+    gpu_ids: List[int] = [],
 ) -> None:
     # load trained model
     model_settings_json = model_file.with_suffix(".json")
@@ -401,7 +535,9 @@ def predict(
             settings = json.load(json_file)
         net = Net.load_from_checkpoint(f"{model_file}", **settings)
     else:
-        net = Net.load_from_checkpoint(f"{model_file}")
+        net = Net.load_from_checkpoint(
+            f"{model_file}", channels=channels, strides=strides, dropout=dropout
+        )
     num_classes = net.num_classes
 
     net.freeze()
@@ -494,6 +630,7 @@ def predict(
         print(indent + "\t".join(header).expandtabs(30))
         print(indent + "\t".join(f"{x}" for x in vals).expandtabs(30))
 
+    all_mean_dice = []
     with torch.no_grad():
         for test_data in test_loader:
 
@@ -519,6 +656,8 @@ def predict(
                 print("Class Dice:")
                 print_table(tissue_names, np.squeeze(dice_np))
 
+                all_mean_dice.append(dice_metric.aggregate().item())
+
                 filename_or_obj = test_data["image_meta_dict"]["filename_or_obj"]
                 if filename_or_obj and isinstance(filename_or_obj, list):
                     filename_or_obj = filename_or_obj[0]
@@ -535,6 +674,16 @@ def predict(
                         tissue_names,
                         file_name=output_dir / (base + "_confusion.png"),
                     )
+        if output_dir is None:
+            print("No output path specified, dice scores won't be saved.")
+        else:
+            np.savetxt(
+                output_dir.joinpath(
+                    f"mean_dice_{model_file.stem}_generalized_score.txt"
+                ),
+                all_mean_dice,
+                delimiter=",",
+            )
 
         if test_labels:
             print("*" * 80)
@@ -548,3 +697,111 @@ def predict(
                 confusion_metrics,
                 (np.squeeze(x.cpu().numpy()) for x in conf_matrix.aggregate()),
             )
+
+
+def cross_validate(
+    image_dir: Path,
+    labels_dir: Path,
+    tissue_list: Path,
+    output_dir: Path,
+    config_files_dir: Path,
+    test_image_dir: Path = None,
+    test_labels_dir: Path = None,
+    num_splits: int = 7,
+    gpu_ids: List[int] = [0],
+):
+    print_config()
+    print("Cross-validating")
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+
+    tissue_dict = load_tissue_list(tissue_list)
+    print(tissue_dict)
+
+    data_dicts = PairedDataSet.create_data_dict(
+        image_dir=image_dir, labels_dir=labels_dir
+    )
+
+    test_data_dicts = []
+
+    if test_image_dir and test_labels_dir:
+        test_data_dicts = PairedDataSet.create_data_dict(
+            image_dir=test_image_dir, labels_dir=test_labels_dir
+        )
+
+    all_datafold_paths: List[Path] = PairedDataSet.kfold_crossval(
+        num_splits=num_splits,
+        data_dicts=data_dicts,
+        output_dir=output_dir,
+        test_data_dicts=test_data_dicts,
+    )
+
+    for config_file in Path(config_files_dir).iterdir():
+        # ToDo: add yaml file support
+        assert config_file.suffix in [".json", ".yaml"]
+
+        is_json = config_file and config_file.suffix.lower() == ".json"
+        dumps = (
+            partial(json.dumps, indent=4)
+            if is_json
+            else partial(yaml.safe_dump, sort_keys=False)
+        )
+        loads = json.loads if is_json else yaml.safe_load
+
+        output_dir_scenario = output_dir / config_file.name
+        output_dir_scenario.mkdir(exist_ok=True)
+
+        for count, dataset_path in enumerate(all_datafold_paths):
+
+            current_output = output_dir_scenario / str(count)
+            print(current_output)
+
+            current_output.mkdir(exist_ok=True)
+
+            data: dict = loads(config_file.read_text())
+
+            data["dataset"] = str(dataset_path)
+            data["output_dir"] = str(current_output)
+            current_layers = data["channels"]
+            current_strides = data["strides"]
+
+            config_file.write_text(dumps(data))
+
+            print("start training")
+
+            result = sp.run(
+                [
+                    sys.executable,
+                    str(Path.cwd().joinpath("run_monai_unet.py")),
+                    "train-config",
+                    "-c",
+                    config_file,
+                ]
+            )
+            print(result)
+            print("training finished")
+            if test_image_dir is not None and test_labels_dir is not None:
+                assert test_image_dir.is_dir() and test_labels_dir.is_dir()
+
+                test_images = sorted(list(test_image_dir.glob(".nii.gz")))
+                test_labels = sorted(list(test_labels_dir.glob(".nii.gz")))
+
+                assert len(test_images) == len(test_labels)
+
+                for file in current_output.iterdir():
+                    if file.match("*.ckpt"):
+                        print("start prediction")
+                        predict(
+                            model_file=file,
+                            output_dir=current_output,
+                            test_images=test_images,
+                            test_labels=test_labels,
+                            tissue_dict=tissue_dict,
+                            channels=current_layers,
+                            strides=current_strides,
+                            dropout=0.0,
+                            spacing=[1, 1, 1],
+                            gpu_ids=gpu_ids,
+                        )
+            else:
+                continue
