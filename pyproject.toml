@@ -24,6 +24,7 @@ classifiers = [
 requires-python = ">=3.7"
 dependencies = [
     "dominate",
+    "h5py",
     "itk",
     "makefun",
     "matplotlib",
@@ -31,6 +32,7 @@ dependencies = [
     "nibabel",
     "pytorch-lightning",
     "scikit-learn",
+    "SimpleITK",
     "tensorboard",
     "torch",
     "torchvision",
@@ -77,5 +79,5 @@ module = "segmantic.prepro.*,segmantic.util.*"
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = "itk.*,PIL,matplotlib.*,torch,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml,scipy.*,vtk,adabelief_pytorch"
+module = "itk.*,PIL,matplotlib.*,torch,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml,scipy.*,vtk,adabelief_pytorch,h5py"
 ignore_missing_imports = true

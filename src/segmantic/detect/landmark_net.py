@@ -96,7 +96,7 @@ class LandmarkNet(pl.LightningModule):
             CropForegroundd(keys=("image", "label"), source_key="label"),
             VertHeatMap(keys="label", label_names=self.landmark_names),
             GaussianSmoothd(keys="image", sigma=0.75),
-            NormalizeIntensityd(keys="image", divisor=2048.0),
+            NormalizeIntensityd(keys="image", divisor=2048.0),  # type: ignore [arg-type]
             ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0),
             RandScaleIntensityd(keys="image", factors=(0.75, 1.25), prob=0.80),
             RandShiftIntensityd(keys="image", offsets=(-0.25, 0.25), prob=0.80),

@@ -7,10 +7,12 @@ from typing import Dict, Hashable, List, Mapping
 import numpy as np
 import torch
 from monai.config import KeysCollection, PathLike
+from monai.config.type_definitions import NdarrayOrTensor
 from monai.data.folder_layout import FolderLayout
 from monai.transforms import GaussianSmooth, ScaleIntensity
 from monai.transforms.transform import MapTransform
 from monai.utils import ImageMetaKey as Key
+from monai.utils import convert_to_tensor
 from monai.utils.enums import PostFix
 
 __all__ = ["LoadVert", "EmbedVert", "VertHeatMap"]
@@ -129,9 +131,7 @@ class EmbedVert(MapTransform):
         self.ref_key = ref_key
         self.meta_key_postfix = meta_key_postfix
 
-    def __call__(
-        self, data: Mapping[Hashable, np.ndarray]
-    ) -> Dict[Hashable, np.ndarray]:
+    def __call__(self, data):
 
         d = dict(data)
         ref_meta_key = f"{self.ref_key}_{self.meta_key_postfix}"
@@ -161,7 +161,7 @@ class EmbedVert(MapTransform):
 
 class VertHeatMap(MapTransform):
     def __init__(
-        self, keys: KeysCollection, gamma: float = 1000.0, label_names: List[str] = None
+        self, keys: KeysCollection, gamma: float = 1000.0, label_names: List[str] = []
     ):
         super().__init__(keys)
         self.label_names = label_names
@@ -169,18 +169,18 @@ class VertHeatMap(MapTransform):
 
     def __call__(
         self, data: Mapping[Hashable, np.ndarray]
-    ) -> Dict[Hashable, np.ndarray]:
+    ) -> Dict[Hashable, NdarrayOrTensor]:
 
+        d: Dict[Hashable, NdarrayOrTensor] = dict(data)
         for k in self.keys:
-            i = data[k].long()
+            i = convert_to_tensor(d[k], dtype=torch.long)
             # one hot if necessary
             is_onehot = i.shape[0] > 1
             if is_onehot:
                 out = torch.zeros_like(i)
             else:
-                out = torch.nn.functional.one_hot(
-                    i, len(self.label_names) + 1
-                )  # plus background
+                # +1 for background
+                out = torch.nn.functional.one_hot(i, len(self.label_names) + 1)
                 out = torch.movedim(out[0], -1, 0)
                 out.fill_(0.0)
                 out = out.float()
@@ -202,14 +202,12 @@ class VertHeatMap(MapTransform):
                 # Gaussian smooth
                 out[label_num] = GaussianSmooth(sigma)(out[label_num].cuda()).cpu()
                 # Normalize to [0,1]
-                out[label_num] = ScaleIntensity()(out[label_num])
+                out[label_num] = ScaleIntensity()(out[label_num])  # type: ignore
                 out[label_num] = out[label_num] * self.gamma
 
-            # TODO: Keep the centroids in the data dictionary?
+            d[k] = out
 
-            data[k] = out
-
-        return data
+        return d
 
 
 class ExtractVertPosition(MapTransform):
