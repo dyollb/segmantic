@@ -12,10 +12,10 @@ from monai.data.folder_layout import FolderLayout
 from monai.transforms import GaussianSmooth, ScaleIntensity
 from monai.transforms.transform import MapTransform
 from monai.utils import ImageMetaKey as Key
-from monai.utils import convert_to_tensor
+from monai.utils import convert_to_numpy, convert_to_tensor
 from monai.utils.enums import PostFix
 
-__all__ = ["LoadVert", "EmbedVert", "VertHeatMap"]
+__all__ = ["LoadVert", "SaveVert", "EmbedVert", "ExtractVertPosition", "VertHeatMap"]
 
 DEFAULT_POST_FIX = PostFix.meta()
 
@@ -136,7 +136,7 @@ class EmbedVert(MapTransform):
         d = dict(data)
         ref_meta_key = f"{self.ref_key}_{self.meta_key_postfix}"
         if "affine" in d[ref_meta_key]:
-            affine = d[ref_meta_key]["affine"]
+            affine = convert_to_numpy(d[ref_meta_key]["affine"])
         else:
             affine = np.eye(4, 4)
         rot_inv = np.linalg.inv(affine[:3, :3])
@@ -155,6 +155,53 @@ class EmbedVert(MapTransform):
 
             meta_key = f"{k}_{self.meta_key_postfix}"
             d[meta_key].update({"affine": affine, "original_channel_dim": "no_channel"})
+
+        return d
+
+
+class ExtractVertPosition(MapTransform):
+    def __init__(
+        self,
+        keys: KeysCollection,
+        allow_missing_keys: bool = False,
+        threshold: float = 0.5,
+        meta_key_postfix: str = DEFAULT_POST_FIX,
+    ):
+        """
+        Postprocess Vertebra localization
+        :param keys: The ``keys`` parameter will be used to get and set the actual data item to transform
+        """
+        super().__init__(keys, allow_missing_keys)
+
+        self.threshold = threshold
+        self.meta_key_postfix = meta_key_postfix
+
+    def __call__(
+        self, data: Mapping[Hashable, np.ndarray]
+    ) -> Dict[Hashable, np.ndarray]:
+
+        d: Dict = dict(data)
+        for key in self.key_iterator(d):
+            # locate vertices
+            vertices = {}
+            for id in range(1, d[key].shape[0]):
+                if d[key][id, ...].max() < self.threshold:
+                    continue
+                X, Y, Z = np.where(d[key][id, ...] == d[key][id, ...].max())
+                p = np.asarray([X[0], Y[0], Z[0]], dtype=float)
+                vertices[id] = p
+
+            # transform to physical coordinates
+            meta_key = f"{key}_{self.meta_key_postfix}"
+            meta = d.get(meta_key, {})
+            if "affine" in meta:
+                affine = meta["affine"]
+                rot = affine[:3, :3]
+                t = affine[:3, 3]
+                for id in vertices:
+                    p = vertices[id]
+                    vertices[id] = np.dot(rot, p) + t
+            d[key] = vertices
 
         return d
 
@@ -206,52 +253,5 @@ class VertHeatMap(MapTransform):
                 out[label_num] = out[label_num] * self.gamma
 
             d[k] = out
-
-        return d
-
-
-class ExtractVertPosition(MapTransform):
-    def __init__(
-        self,
-        keys: KeysCollection,
-        allow_missing_keys: bool = False,
-        threshold: float = 0.5,
-        meta_key_postfix: str = DEFAULT_POST_FIX,
-    ):
-        """
-        Postprocess Vertebra localization
-        :param keys: The ``keys`` parameter will be used to get and set the actual data item to transform
-        """
-        super().__init__(keys, allow_missing_keys)
-
-        self.threshold = threshold
-        self.meta_key_postfix = meta_key_postfix
-
-    def __call__(
-        self, data: Mapping[Hashable, np.ndarray]
-    ) -> Dict[Hashable, np.ndarray]:
-
-        d: Dict = dict(data)
-        for key in self.key_iterator(d):
-            # locate vertices
-            vertices = {}
-            for id in range(1, d[key].shape[0]):
-                if d[key][id, ...].max() < self.threshold:
-                    continue
-                X, Y, Z = np.where(d[key][id, ...] == d[key][id, ...].max())
-                p = np.asarray([X[0], Y[0], Z[0]], dtype=float)
-                vertices[id] = p
-
-            # transform to physical coordinates
-            meta_key = f"{key}_{self.meta_key_postfix}"
-            meta = d.get(meta_key, {})
-            if "affine" in meta:
-                affine = meta["affine"]
-                rot = affine[:3, :3]
-                t = affine[:3, 3]
-                for id in vertices:
-                    p = vertices[id]
-                    vertices[id] = np.dot(rot, p) + t
-            d[key] = vertices
 
         return d
