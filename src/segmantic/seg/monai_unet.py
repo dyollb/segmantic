@@ -45,7 +45,7 @@ from monai.transforms import (
     SaveImaged,
 )
 from monai.transforms.spatial.dictionary import Spacingd
-from monai.transforms.transform import Transform
+from monai.transforms.transform import MapTransform, Transform
 from monai.utils import set_determinism
 from pytorch_lightning.callbacks import (
     EarlyStopping,
@@ -155,7 +155,7 @@ class Net(pl.LightningModule):
         return Compose(xforms)
 
     def default_augmentation(self, keys: List[str]):
-        xforms: List[Transform] = []
+        xforms: List[MapTransform] = []
 
         if self.augment_spatial:
             mode = ["nearest" if k == "label" else "bilinear" for k in keys]
@@ -186,7 +186,7 @@ class Net(pl.LightningModule):
                 RandHistogramShiftd(keys="image", prob=0.2, num_control_points=10),
                 RandBiasFieldd(keys="image", prob=0.2),
                 RandGibbsNoised(keys="image", prob=0.2, alpha=(0.0, 1.0)),
-                RandKSpaceSpikeNoised(keys="image", global_prob=0.1, prob=0.2),
+                RandKSpaceSpikeNoised(keys="image", prob=0.1),
             ]
 
         xforms += [
@@ -560,7 +560,7 @@ def predict(
     )
 
     # save predicted labels
-    save_transforms = []
+    save_transforms: List[MapTransform] = []
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
 
