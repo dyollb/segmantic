@@ -96,9 +96,9 @@ Instead of providing the 'image_dir'/'labels_dir' pair, the training data can al
 
 ```json
 {
-    "dataset" = ["/dataA/dataset.json", "/dataB/dataset.json"],
-    "output_dir" = "<path where trained model and logs are saved>",
-    ...
+    "dataset": ["/dataA/dataset.json", "/dataB/dataset.json"],
+    "output_dir": "<path where trained model and logs are saved>",
+    "Etc": "etc"
 }
 ```
 
