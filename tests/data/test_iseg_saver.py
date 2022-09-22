@@ -19,8 +19,8 @@ def test_iSegSaver(tmp_path: Path, labelfield: Image3, labels: Dict[int, LabelIn
     label_file = tmp_path / "label.nii.gz"
     output_dir = tmp_path / "output"
 
-    itk.imwrite(labelfield, label_file)
-    itk.imwrite(labelfield, image_file)
+    itk.imwrite(labelfield, f"{label_file}")
+    itk.imwrite(labelfield, f"{image_file}")
 
     dataset = {"image": str(image_file), "label": str(label_file)}
     data = LoadImaged(keys=["image", "label"])(dataset)
