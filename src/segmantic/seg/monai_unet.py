@@ -14,7 +14,13 @@ import yaml
 from adabelief_pytorch import AdaBelief
 from monai.bundle import ConfigParser
 from monai.config import print_config
-from monai.data import CacheDataset, Dataset, decollate_batch, list_data_collate
+from monai.data import (
+    CacheDataset,
+    DataLoader,
+    Dataset,
+    decollate_batch,
+    list_data_collate,
+)
 from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
 from monai.metrics import ConfusionMatrixMetric, CumulativeAverage, DiceMetric
@@ -254,7 +260,7 @@ class Net(pl.LightningModule):
         )
 
     def train_dataloader(self):
-        train_loader = torch.utils.data.DataLoader(
+        train_loader = DataLoader(
             self.train_ds,
             batch_size=2,
             shuffle=True,
@@ -264,9 +270,7 @@ class Net(pl.LightningModule):
         return train_loader
 
     def val_dataloader(self):
-        val_loader = torch.utils.data.DataLoader(
-            self.val_ds, batch_size=1, num_workers=0
-        )
+        val_loader = DataLoader(self.val_ds, batch_size=1, num_workers=0)
         return val_loader
 
     def configure_optimizers(self):
@@ -567,12 +571,12 @@ def predict(
         save_transforms = [
             SaveImaged(
                 keys="pred",
-                meta_keys="pred_meta_dict",
                 output_dir=output_dir,
                 output_postfix="seg",
                 resample=False,
                 separate_folder=False,
                 print_log=False,
+                writer="ITKWriter",
             )
         ]
 
@@ -584,9 +588,6 @@ def predict(
                 keys="pred",
                 transform=pre_transforms,
                 orig_keys="image",
-                meta_keys="pred_meta_dict",
-                orig_meta_keys="image_meta_dict",
-                meta_key_postfix="meta_dict",
                 nearest_interp=False,
                 to_tensor=True,
             ),
@@ -596,7 +597,7 @@ def predict(
     )
 
     # data loader
-    test_loader = torch.utils.data.DataLoader(
+    test_loader = DataLoader(
         Dataset(
             data=test_files,
             transform=pre_transforms,
