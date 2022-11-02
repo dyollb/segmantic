@@ -4,12 +4,11 @@ import subprocess as sp
 import sys
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union, cast
 
 import numpy as np
 import pytorch_lightning as pl
 import torch
-import torch.utils.data
 import yaml
 from adabelief_pytorch import AdaBelief
 from monai.bundle import ConfigParser
@@ -51,7 +50,7 @@ from monai.transforms import (
     SaveImaged,
 )
 from monai.transforms.spatial.dictionary import Spacingd
-from monai.transforms.transform import Transform
+from monai.transforms.transform import MapTransform, Transform
 from monai.utils import set_determinism
 from pytorch_lightning.callbacks import (
     EarlyStopping,
@@ -152,7 +151,7 @@ class Net(pl.LightningModule):
             Orientationd(keys=keys, axcodes="RAS"),
             NormalizeIntensityd(keys="image", nonzero=False, channel_wise=True),
             CropForegroundd(keys=keys, source_key="label"),
-            EnsureTyped(keys=keys, dtype=np.float32, device=torch.device(self.device)),
+            EnsureTyped(keys=keys, dtype=np.float32, device=self.device),  # type: ignore
         ]
 
         if spacing:
@@ -161,7 +160,7 @@ class Net(pl.LightningModule):
         return Compose(xforms)
 
     def default_augmentation(self, keys: List[str]):
-        xforms: List[Transform] = []
+        xforms: List[MapTransform] = []
 
         if self.augment_spatial:
             mode = ["nearest" if k == "label" else "bilinear" for k in keys]
@@ -192,7 +191,7 @@ class Net(pl.LightningModule):
                 RandHistogramShiftd(keys="image", prob=0.2, num_control_points=10),
                 RandBiasFieldd(keys="image", prob=0.2),
                 RandGibbsNoised(keys="image", prob=0.2, alpha=(0.0, 1.0)),
-                RandKSpaceSpikeNoised(keys="image", global_prob=0.1, prob=0.2),
+                RandKSpaceSpikeNoised(keys="image", prob=0.2),
             ]
 
         xforms += [
@@ -427,7 +426,7 @@ def train(
 
     # initialise the LightningModule
     if checkpoint_file and Path(checkpoint_file).exists():
-        net: Net = Net.load_from_checkpoint(f"{checkpoint_file}")
+        net = cast(Net, Net.load_from_checkpoint(f"{checkpoint_file}"))
     else:
         if num_classes > 0 and tissue_list:
             raise ValueError(
@@ -537,10 +536,13 @@ def predict(
         print(f"WARNING: Loading legacy model settings from {model_settings_json}")
         with model_settings_json.open() as json_file:
             settings = json.load(json_file)
-        net = Net.load_from_checkpoint(f"{model_file}", **settings)
+        net = cast(Net, Net.load_from_checkpoint(f"{model_file}", **settings))
     else:
-        net = Net.load_from_checkpoint(
-            f"{model_file}", channels=channels, strides=strides, dropout=dropout
+        net = cast(
+            Net,
+            Net.load_from_checkpoint(
+                f"{model_file}", channels=channels, strides=strides, dropout=dropout
+            ),
         )
     num_classes = net.num_classes
 
@@ -564,7 +566,7 @@ def predict(
     )
 
     # save predicted labels
-    save_transforms = []
+    save_transforms: List[MapTransform] = []
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
 
@@ -586,7 +588,7 @@ def predict(
             EnsureTyped(keys="pred"),
             Invertd(
                 keys="pred",
-                transform=pre_transforms,
+                transform=pre_transforms,  # type: ignore [arg-type]
                 orig_keys="image",
                 nearest_interp=False,
                 to_tensor=True,
