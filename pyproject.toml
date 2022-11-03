@@ -70,12 +70,17 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_return_any = true
 strict_equality = true
-exclude = "pix2pix_cyclegan|unversioned"
+exclude = [
+  'pix2pix_cyclegan'
+]
 show_column_numbers = true
 show_error_codes = true
 
 [[tool.mypy.overrides]]
-module = "segmantic.prepro.*,segmantic.util.*"
+module = [
+  'segmantic.prepro.*',
+  'segmantic.util.*'
+]
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]

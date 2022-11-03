@@ -4,17 +4,21 @@ import subprocess as sp
 import sys
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union, cast
 
 import numpy as np
 import pytorch_lightning as pl
 import torch
-import torch.utils.data
-import yaml
 from adabelief_pytorch import AdaBelief
 from monai.bundle import ConfigParser
 from monai.config import print_config
-from monai.data import CacheDataset, Dataset, decollate_batch, list_data_collate
+from monai.data import (
+    CacheDataset,
+    DataLoader,
+    Dataset,
+    decollate_batch,
+    list_data_collate,
+)
 from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
 from monai.metrics import ConfusionMatrixMetric, CumulativeAverage, DiceMetric
@@ -55,6 +59,7 @@ from pytorch_lightning.callbacks import (
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from ..prepro.labels import load_tissue_list
+from ..util import config
 from .dataset import PairedDataSet
 from .evaluation import confusion_matrix
 from .utils import make_device
@@ -146,7 +151,7 @@ class Net(pl.LightningModule):
             Orientationd(keys=keys, axcodes="RAS"),
             NormalizeIntensityd(keys="image", nonzero=False, channel_wise=True),
             CropForegroundd(keys=keys, source_key="label"),
-            EnsureTyped(keys=keys, dtype=np.float32, device=torch.device(self.device)),
+            EnsureTyped(keys=keys, dtype=np.float32, device=self.device),  # type: ignore
         ]
 
         if spacing:
@@ -186,7 +191,7 @@ class Net(pl.LightningModule):
                 RandHistogramShiftd(keys="image", prob=0.2, num_control_points=10),
                 RandBiasFieldd(keys="image", prob=0.2),
                 RandGibbsNoised(keys="image", prob=0.2, alpha=(0.0, 1.0)),
-                RandKSpaceSpikeNoised(keys="image", prob=0.1),
+                RandKSpaceSpikeNoised(keys="image", prob=0.2),
             ]
 
         xforms += [
@@ -254,7 +259,7 @@ class Net(pl.LightningModule):
         )
 
     def train_dataloader(self):
-        train_loader = torch.utils.data.DataLoader(
+        train_loader = DataLoader(
             self.train_ds,
             batch_size=2,
             shuffle=True,
@@ -264,9 +269,7 @@ class Net(pl.LightningModule):
         return train_loader
 
     def val_dataloader(self):
-        val_loader = torch.utils.data.DataLoader(
-            self.val_ds, batch_size=1, num_workers=0
-        )
+        val_loader = DataLoader(self.val_ds, batch_size=1, num_workers=0)
         return val_loader
 
     def configure_optimizers(self):
@@ -423,7 +426,7 @@ def train(
 
     # initialise the LightningModule
     if checkpoint_file and Path(checkpoint_file).exists():
-        net: Net = Net.load_from_checkpoint(f"{checkpoint_file}")
+        net = cast(Net, Net.load_from_checkpoint(f"{checkpoint_file}"))
     else:
         if num_classes > 0 and tissue_list:
             raise ValueError(
@@ -533,10 +536,13 @@ def predict(
         print(f"WARNING: Loading legacy model settings from {model_settings_json}")
         with model_settings_json.open() as json_file:
             settings = json.load(json_file)
-        net = Net.load_from_checkpoint(f"{model_file}", **settings)
+        net = cast(Net, Net.load_from_checkpoint(f"{model_file}", **settings))
     else:
-        net = Net.load_from_checkpoint(
-            f"{model_file}", channels=channels, strides=strides, dropout=dropout
+        net = cast(
+            Net,
+            Net.load_from_checkpoint(
+                f"{model_file}", channels=channels, strides=strides, dropout=dropout
+            ),
         )
     num_classes = net.num_classes
 
@@ -567,12 +573,12 @@ def predict(
         save_transforms = [
             SaveImaged(
                 keys="pred",
-                meta_keys="pred_meta_dict",
                 output_dir=output_dir,
                 output_postfix="seg",
                 resample=False,
                 separate_folder=False,
                 print_log=False,
+                writer="ITKWriter",
             )
         ]
 
@@ -582,11 +588,8 @@ def predict(
             EnsureTyped(keys="pred"),
             Invertd(
                 keys="pred",
-                transform=pre_transforms,
+                transform=pre_transforms,  # type: ignore [arg-type]
                 orig_keys="image",
-                meta_keys="pred_meta_dict",
-                orig_meta_keys="image_meta_dict",
-                meta_key_postfix="meta_dict",
                 nearest_interp=False,
                 to_tensor=True,
             ),
@@ -596,7 +599,7 @@ def predict(
     )
 
     # data loader
-    test_loader = torch.utils.data.DataLoader(
+    test_loader = DataLoader(
         Dataset(
             data=test_files,
             transform=pre_transforms,
@@ -737,16 +740,11 @@ def cross_validate(
     )
 
     for config_file in Path(config_files_dir).iterdir():
-        # ToDo: add yaml file support
-        assert config_file.suffix in [".json", ".yaml"]
 
+        assert config_file.suffix in [".json", ".yaml"]
         is_json = config_file and config_file.suffix.lower() == ".json"
-        dumps = (
-            partial(json.dumps, indent=4)
-            if is_json
-            else partial(yaml.safe_dump, sort_keys=False)
-        )
-        loads = json.loads if is_json else yaml.safe_load
+        dumps = partial(config.dumps, is_json)
+        loads = partial(config.loads, is_json)
 
         output_dir_scenario = output_dir / config_file.name
         output_dir_scenario.mkdir(exist_ok=True)
