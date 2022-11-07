@@ -23,7 +23,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License"
 ]
 dependencies = [
-    "dominate",
     "h5py",
     "itk",
     "makefun",
@@ -70,6 +69,7 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_return_any = true
 strict_equality = true
+no_implicit_optional = false
 exclude = [
   'pix2pix_cyclegan'
 ]

@@ -42,8 +42,8 @@ class LandmarkNet(pl.LightningModule):
         landmark_names: List[str],
         num_channels: int = 1,
         spatial_dims: int = 3,
-        spatial_size: Sequence[int] = None,
-        spacing: Sequence[float] = None,
+        spatial_size: Sequence[int] = [],
+        spacing: Sequence[float] = [],
     ):
         super().__init__()
 
