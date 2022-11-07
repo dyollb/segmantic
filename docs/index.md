@@ -11,7 +11,7 @@ Segmantic is a [MONAI]/[PyTorch]-based library for medical image segmentation.
 
 ## Installation
 
-Create a virtal environment
+Create a virtual environment
 
 ```sh
 cd /your/working/directory
@@ -36,17 +36,16 @@ pip install -e git+https://github.com/dyollb/segmantic.git#egg=segmantic[dev]
 
 The project layout is as follows:
 
-```
-setup.py
-src/segmantic
-    commands/   # command lines
-    i2i/        # image-to-image translation (style transfer)
-    prepro/     # module containing utils to prepare your data
-    seg/        # semantic segmentation: training, inference and evaluation
-    util/       # utility functions
-
-scripts/
-tests/
+```bash
+|-- segmantic/src/segmantic
+    |-- commands   # command lines
+    |-- i2i        # image-to-image translation (style transfer)
+    |-- prepro     # module containing utils to prepare your data
+    |-- seg        # semantic segmentation: training, inference and evaluation
+    |-- util       # utility functions
+|-- segmantic/pyproject.toml
+|-- segmantic/scripts
+|-- segmantic/tests
 ```
 
 <!-- INVISIBLE REFERENCES BELOW THIS LINE. ORDER ALPHABETICALLY -->
