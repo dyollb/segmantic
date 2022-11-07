@@ -9,7 +9,11 @@ import torch
 from monai.config import KeysCollection, PathLike
 from monai.config.type_definitions import NdarrayOrTensor
 from monai.data.folder_layout import FolderLayout
-from monai.transforms import GaussianSmooth, ScaleIntensity
+from monai.transforms import (
+    GaussianSmooth,
+    ScaleIntensity,
+    generate_spatial_bounding_box,
+)
 from monai.transforms.transform import MapTransform
 from monai.utils import ImageMetaKey as Key
 from monai.utils import convert_to_numpy, convert_to_tensor
@@ -203,6 +207,24 @@ class ExtractVertPosition(MapTransform):
                     vertices[id] = np.dot(rot, p) + t
             d[key] = vertices
 
+        return d
+
+
+class BoundingBoxd(MapTransform):
+    def __init__(
+        self, keys: KeysCollection, result: str = "result", bbox: str = "bbox"
+    ):
+        super().__init__(keys)
+        self.result = result
+        self.bbox = bbox
+
+    def __call__(self, data):
+        d = dict(data)
+        for key in self.keys:
+            bbox = generate_spatial_bounding_box(d[key])
+            if d.get(self.result) is None:
+                d[self.result] = dict()
+            d[self.result][self.bbox] = np.array(bbox).astype(int).tolist()
         return d
 
 

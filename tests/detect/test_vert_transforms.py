@@ -9,6 +9,7 @@ from monai.transforms import AsDiscreted, Compose, EnsureChannelFirstd, LoadImag
 from numpy.testing import assert_almost_equal
 
 from segmantic.detect.transforms import (
+    BoundingBoxd,
     EmbedVert,
     ExtractVertPosition,
     LoadVert,
@@ -116,3 +117,37 @@ def test_Vert_RoundTrip(
 
     assert_almost_equal(np.array(verts[KEY_0]), np.array(TEST_POINT_0), decimal=4)
     assert_almost_equal(np.array(verts[KEY_1]), np.array(TEST_POINT_1), decimal=4)
+
+
+def test_BoundingBox(tmp_path: Path, example_image: ImageAnyd):
+    img_file = tmp_path / "image.nii.gz"
+    itk.imwrite(example_image, f"{img_file}")
+
+    tr = Compose(
+        [
+            LoadImaged(keys="image"),
+            EnsureChannelFirstd(keys="image"),
+            BoundingBoxd(keys="image", result="result", bbox="bbox"),
+        ]
+    )
+    d = tr({"image": img_file})
+    assert "result" in d
+    assert "bbox" in d["result"]
+    bbox: list = d["result"]["bbox"]
+    assert bbox[0] == bbox[1]
+
+    arr = itk.array_from_image(example_image)
+    arr[5:7, :, 10:23] = 1
+    itk.imwrite(itk.image_from_array(arr), f"{img_file}")
+    d = tr({"image": img_file})
+    assert "result" in d
+    assert "bbox" in d["result"]
+    bbox = d["result"]["bbox"]
+    np.testing.assert_array_equal(bbox, np.asarray([[10, 0, 5], [23, 20, 7]]))
+
+
+if __name__ == "__main__":
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_BoundingBox(Path(tmpdir), make_image(shape=[30, 20, 10]))
