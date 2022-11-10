@@ -184,7 +184,7 @@ def predict(
     results_dir: Path = typer.Option(
         None, "--results-dir", "-r", help="output directory"
     ),
-    spacing: List[int] = typer.Option(
+    spacing: List[float] = typer.Option(
         [], "--spacing", help="if specified, the image is first resampled"
     ),
     gpu_ids: List[int] = [0],
@@ -196,8 +196,10 @@ def predict(
         -i ./dataset/images -m model.ckpt --results-dir ./results --tissue-list ./dataset/labels.txt
     """
 
-    def _get_nifti_files(dir: Path) -> List[Path]:
-        return sorted(f for f in dir.glob("*.nii.gz"))
+    def _get_nifti_files(path: Path) -> List[Path]:
+        if path.is_file():
+            return [path]
+        return list(sorted(f for f in path.glob("*.nii.gz")))
 
     monai_unet.predict(
         model_file=model_file,

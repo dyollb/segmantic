@@ -6,7 +6,7 @@ import pytest
 from monai.transforms import LoadImaged
 
 from segmantic.data.transforms import LabelInfo, iSegSaver
-from segmantic.prepro.core import Image3
+from segmantic.prepro.itk_image import Image3
 
 
 @pytest.fixture

@@ -1,16 +1,15 @@
 import os
 from pathlib import Path
 from random import randint
-from typing import List, Tuple
+from typing import Callable, List, Tuple
 
 import itk
 import numpy as np
 
-from .core import (
+from .itk_image import (
     Image2,
     NdarrayImage,
     extract_slices,
-    get_files,
     identity,
     imread,
     imwrite,
@@ -124,6 +123,13 @@ def randomize_files(dir: Path, ext: str = ".tif") -> None:
     files = random_sample([f for f in dir.glob("*%s" % ext)])
     for i, f in enumerate(files):
         shutil.move(f"{f}", dir / ("im_%05d.tif" % i))
+
+
+def get_files(
+    dir: Path, predicate: Callable[[str], bool] = lambda f: f.endswith(".nii.gz")
+) -> List[Path]:
+    """Collect list of file names filtered by 'predicate'"""
+    return [f for f in Path(dir).glob("*.*") if predicate(f"{f}")]
 
 
 if __name__ == "__main__":

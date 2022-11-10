@@ -1,8 +1,9 @@
-import itk
-import typer
 from pathlib import Path
 
-from segmantic.prepro.core import resample_to_ref
+import itk
+import typer
+
+from segmantic.prepro.itk_image import resample_to_ref
 
 
 def main(input: Path, ref: Path, output: Path) -> None:

@@ -3,7 +3,7 @@ from typing import Dict
 import itk
 import numpy as np
 
-from ..prepro.core import ImageNd
+from ..prepro.itk_image import ImageNd
 
 
 def hausdorff_surface_distance(y_pred: ImageNd, y_ref: ImageNd) -> Dict[str, float]:

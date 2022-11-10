@@ -15,7 +15,7 @@ from segmantic.detect.transforms import (
     LoadVert,
     SaveVert,
 )
-from segmantic.prepro.core import ImageAnyd, make_image
+from segmantic.prepro.itk_image import ImageAnyd, make_itk_image
 
 KEY_0 = "point_0"
 KEY_1 = "point_1"
@@ -34,7 +34,7 @@ def landmarks() -> Dict[str, List[float]]:
 
 @pytest.fixture
 def example_image() -> ImageAnyd:
-    image = make_image(shape=[30, 20, 10], spacing=[1.0, 0.85, 2.5], value=0)
+    image = make_itk_image(shape=[30, 20, 10], spacing=[1.0, 0.85, 2.5], value=0)
     mat = np.eye(3, 3)
     mat[:2, :] = 0
     mat[0, 1] = -1.0
@@ -144,10 +144,3 @@ def test_BoundingBox(tmp_path: Path, example_image: ImageAnyd):
     assert "bbox" in d["result"]
     bbox = d["result"]["bbox"]
     np.testing.assert_array_equal(bbox, np.asarray([[10, 0, 5], [23, 20, 7]]))
-
-
-if __name__ == "__main__":
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        test_BoundingBox(Path(tmpdir), make_image(shape=[30, 20, 10]))

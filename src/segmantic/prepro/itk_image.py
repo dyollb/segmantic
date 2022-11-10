@@ -1,6 +1,6 @@
 import math
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence, TypeVar, Union
+from typing import List, Optional, Sequence, TypeVar, Union
 
 import itk
 import numpy as np
@@ -57,12 +57,12 @@ def imwrite(image: ImageAnyd, filename: Path, compression: bool = False) -> None
     itk.imwrite(image, f"{filename}", compression=compression)
 
 
-def pixeltype(image: ImageAnyd) -> itkCType:
+def itk_pixeltype(image: ImageAnyd) -> itkCType:
     """Get pixel type"""
     return itk.template(image)[1][0]
 
 
-def make_image(
+def make_itk_image(
     shape: Sequence[int],
     spacing: Optional[Sequence[float]] = None,
     value: Union[int, float] = 0,
@@ -242,10 +242,3 @@ def crop(
         extraction_region=region,
         direction_collapse_to_strategy=_COLLAPSE_STRATEGY_SUBMATRIX,
     )
-
-
-def get_files(
-    dir: Path, predicate: Callable[[str], bool] = lambda f: f.endswith(".nii.gz")
-) -> List[Path]:
-    """Collect list of file names filtered by 'predicate'"""
-    return [f for f in Path(dir).glob("*.*") if predicate(f"{f}")]

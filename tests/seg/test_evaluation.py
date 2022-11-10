@@ -1,12 +1,12 @@
 import itk
 import numpy as np
 
-from segmantic.prepro.core import make_image
+from segmantic.prepro.itk_image import make_itk_image
 from segmantic.seg import evaluation
 
 
 def test_confusion_matrix():
-    labelfield = make_image(shape=(10, 10), spacing=(1.0, 1.0), value=0)
+    labelfield = make_itk_image(shape=(10, 10), spacing=(1.0, 1.0), value=0)
     labelfield[2:3, 2:4] = 1
     labelfield[3:5, 3:4] = 2
 
@@ -23,14 +23,14 @@ def test_confusion_matrix():
 
 
 def test_hausdorff():
-    labelfield = make_image(shape=(10, 10), spacing=(1.0, 1.0))
+    labelfield = make_itk_image(shape=(10, 10), spacing=(1.0, 1.0))
     labelfield[3:6, 3:6] = 1
 
     r11 = evaluation.hausdorff_surface_distance(labelfield, labelfield)
     assert r11["mean"] == 0.0
     assert all(v == 0.0 for v in r11.values())
 
-    labelfield2 = make_image(shape=(10, 10), spacing=(1.0, 1.0))
+    labelfield2 = make_itk_image(shape=(10, 10), spacing=(1.0, 1.0))
     labelfield2[1:8, 2:7] = 1
 
     r12 = evaluation.hausdorff_surface_distance(labelfield, labelfield2)

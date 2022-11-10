@@ -7,7 +7,7 @@ import typer
 from makefun import wraps
 from typing_extensions import get_args, get_origin
 
-from segmantic.prepro.core import Image2, Image3
+from segmantic.prepro.itk_image import Image2, Image3
 
 
 def _is_image_type(annotation: Any) -> bool:
