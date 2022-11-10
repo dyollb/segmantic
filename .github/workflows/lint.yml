@@ -7,7 +7,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: psf/black@stable
+      - name: Check format
+        uses: psf/black@stable
         with:
           options: "--check --diff"
           src: "src"
+      - name: Pip install test
+        run: pip install -e ".[test]"
+      - name: Static analysis
+        run: mypy .

@@ -40,6 +40,9 @@ dependencies = [
     "adabelief_pytorch"
 ]
 
+[tool.setuptools.dynamic]
+version = {attr = "segmantic.__version__"}
+
 [project.optional-dependencies]
 test = [
   "mypy",
