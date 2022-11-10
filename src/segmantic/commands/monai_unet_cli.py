@@ -61,7 +61,6 @@ def train_config(
 
     is_json = config_file and config_file.suffix.lower() == ".json"
     dumps = partial(config.dumps, is_json)
-    loads = partial(config.loads, is_json)
 
     if print_defaults:
         default_args = get_default_args(signature=sig)
@@ -74,7 +73,7 @@ def train_config(
     if not config_file:
         raise ValueError("Invalid '--config-file' argument")
 
-    args: dict = validate_args(loads(config_file.read_text()), signature=sig)
+    args: dict = validate_args(config.load(config_file), signature=sig)
     monai_unet.train(**args)
 
 
@@ -123,7 +122,6 @@ def cross_validate(
 
     is_json = config_file and config_file.suffix.lower() == ".json"
     dumps = partial(config.dumps, is_json)
-    loads = partial(config.loads, is_json)
 
     if print_defaults:
         default_args = get_default_args(signature=sig)
@@ -136,7 +134,7 @@ def cross_validate(
     if not config_file:
         raise ValueError("Invalid '--config-file' argument")
 
-    args: dict = validate_args(loads(config_file.read_text()), signature=sig)
+    args: dict = validate_args(config.load(config_file), signature=sig)
     monai_unet.cross_validate(**args)
 
 
