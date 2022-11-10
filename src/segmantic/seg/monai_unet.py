@@ -9,7 +9,6 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union, cast
 import numpy as np
 import pytorch_lightning as pl
 import torch
-import yaml
 from adabelief_pytorch import AdaBelief
 from monai.bundle import ConfigParser
 from monai.config import print_config
@@ -60,6 +59,7 @@ from pytorch_lightning.callbacks import (
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from ..prepro.labels import load_tissue_list
+from ..util import config
 from .dataset import PairedDataSet
 from .evaluation import confusion_matrix
 from .utils import make_device
@@ -740,16 +740,11 @@ def cross_validate(
     )
 
     for config_file in Path(config_files_dir).iterdir():
-        # ToDo: add yaml file support
-        assert config_file.suffix in [".json", ".yaml"]
 
+        assert config_file.suffix in [".json", ".yaml"]
         is_json = config_file and config_file.suffix.lower() == ".json"
-        dumps = (
-            partial(json.dumps, indent=4)
-            if is_json
-            else partial(yaml.safe_dump, sort_keys=False)
-        )
-        loads = json.loads if is_json else yaml.safe_load
+        dumps = partial(config.dumps, is_json)
+        loads = partial(config.loads, is_json)
 
         output_dir_scenario = output_dir / config_file.name
         output_dir_scenario.mkdir(exist_ok=True)

@@ -28,28 +28,28 @@ jobs:
       matrix:
         config:
         - {
-          name: "macos-11 - Python 3.9",
-          os: macos-11,
+          name: "macos-latest - Python 3.9",
+          os: macos-latest,
           python-version: "3.9"
           }
         - {
-          name: "windows-2019 - Python 3.9",
-          os: windows-2019,
+          name: "windows-latest - Python 3.9",
+          os: windows-latest,
           python-version: "3.9"
           }
         - {
-          name: "ubuntu-20.04 - Python 3.7",
-          os: ubuntu-20.04,
+          name: "ubuntu-latest - Python 3.7",
+          os: ubuntu-latest,
           python-version: "3.7"
           }
         - {
-          name: "ubuntu-20.04 - Python 3.8",
-          os: ubuntu-20.04,
+          name: "ubuntu-latest - Python 3.8",
+          os: ubuntu-latest,
           python-version: "3.8"
           }
         - {
-          name: "ubuntu-20.04 - Python 3.9",
-          os: ubuntu-20.04,
+          name: "ubuntu-latest - Python 3.9",
+          os: ubuntu-latest,
           python-version: "3.9"
           }
 
@@ -75,9 +75,6 @@ jobs:
         pip install -e segmantic_src
     - name: Pip install dev
       run: pip install -e "segmantic_src[dev]"
-    - name: Static analysis
-      working-directory: segmantic_src
-      run: mypy .
     - name: Test
       working-directory: segmantic_src
       run: pytest --cov segmantic --cov-report=xml --cov-config=.coveragerc

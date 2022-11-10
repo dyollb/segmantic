@@ -20,7 +20,7 @@ def build_tissue_mapping(
         1. tissue label dict after mapping
         2. input-to-output lookup table
     """
-    output_label_names = list(sorted(set([mapper(n) for n in input_label_map.keys()])))
+    output_label_names = list(sorted({mapper(n) for n in input_label_map.keys()}))
     output_label_names.remove("Background")
     output_label_names = ["Background"] + output_label_names
     output_label_map = {n: i for i, n in enumerate(output_label_names)}
@@ -78,7 +78,7 @@ def save_tissue_list(
             name = label_tissue_map[label]
             r, g, b = tissue_color_map(name)
             print(
-                "C%.2f %.2f %.2f %.2f %s" % (r, g, b, 0.5, name),
+                "C{:.2f} {:.2f} {:.2f} {:.2f} {}".format(r, g, b, 0.5, name),
                 file=f,
             )
 

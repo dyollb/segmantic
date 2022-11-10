@@ -59,7 +59,7 @@ def create_data_dict(
     return data_dicts
 
 
-class PairedDataSet(object):
+class PairedDataSet:
     def __init__(
         self,
         image_dir: Path = Path(),

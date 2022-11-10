@@ -1,13 +1,14 @@
 [build-system]
-requires = ["flit_core >= 3.7"]
-build-backend = "flit_core.buildapi"
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "segmantic"
 authors = [{name = "Bryn Lloyd", email = "lloyd@itis.swiss"}]
 readme = "README.md"
+requires-python = ">=3.7"
 license = {file = "LICENSE"}
-dynamic = ["version", "description"]
+dynamic = ["version"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
@@ -21,9 +22,8 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License"
 ]
-requires-python = ">=3.7"
 dependencies = [
-    "dominate",
+    "h5py",
     "itk",
     "makefun",
     "matplotlib",
@@ -31,6 +31,7 @@ dependencies = [
     "nibabel",
     "pytorch-lightning",
     "scikit-learn",
+    "SimpleITK",
     "tensorboard",
     "torch",
     "torchvision",
@@ -38,6 +39,9 @@ dependencies = [
     "typing-extensions",
     "adabelief_pytorch"
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "segmantic.__version__"}
 
 [project.optional-dependencies]
 test = [
@@ -68,8 +72,9 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_return_any = true
 strict_equality = true
+no_implicit_optional = false
 exclude = [
-  'pix2pix_cyclegan'
+  'some_folder_to_exclude'
 ]
 show_column_numbers = true
 show_error_codes = true
@@ -82,23 +87,5 @@ module = [
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = [
-  'adabelief_pytorch',
-  'click',
-  'colorama',
-  'itk.*',
-  'matplotlib.*',
-  'nibabel',
-  'numba',
-  'PIL',
-  'pytest',
-  'scipy.*',
-  'setuptools',
-  'sklearn.*',
-  'torch.*',
-  'torchvision.*',
-  'typer.*',
-  'vtk',
-  'yaml'
-]
+module = "itk.*,PIL,matplotlib.*,torch,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml,scipy.*,vtk,adabelief_pytorch,h5py"
 ignore_missing_imports = true
