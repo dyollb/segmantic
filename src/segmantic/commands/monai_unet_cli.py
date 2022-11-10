@@ -1,5 +1,4 @@
 import inspect
-from functools import partial
 from pathlib import Path
 from typing import List
 
@@ -59,15 +58,9 @@ def train_config(
     """
     sig = inspect.signature(monai_unet.train)
 
-    is_json = config_file and config_file.suffix.lower() == ".json"
-    dumps = partial(config.dumps, is_json)
-
     if print_defaults:
         default_args = get_default_args(signature=sig)
-        if config_file:
-            config_file.write_text(dumps(default_args))
-        else:
-            print(dumps(default_args))
+        config.dump(default_args, config_file=config_file)
         return
 
     if not config_file:
@@ -120,15 +113,9 @@ def cross_validate(
     """
     sig = inspect.signature(monai_unet.cross_validate)
 
-    is_json = config_file and config_file.suffix.lower() == ".json"
-    dumps = partial(config.dumps, is_json)
-
     if print_defaults:
         default_args = get_default_args(signature=sig)
-        if config_file:
-            config_file.write_text(dumps(default_args))
-        else:
-            print(dumps(default_args))
+        config.dump(default_args, config_file=config_file)
         return
 
     if not config_file:
