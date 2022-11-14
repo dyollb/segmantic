@@ -23,21 +23,21 @@ classifiers = [
     "License :: OSI Approved :: MIT License"
 ]
 dependencies = [
+    "adabelief_pytorch",
     "h5py",
-    "itk",
-    "makefun",
+    "itk-io",
     "matplotlib",
     "monai",
     "nibabel",
     "pytorch-lightning",
     "scikit-learn",
     "SimpleITK",
+    "sitk-cli",
     "tensorboard",
     "torch",
     "torchvision",
     "typer",
-    "typing-extensions",
-    "adabelief_pytorch"
+    "typing-extensions"
 ]
 
 [tool.setuptools.dynamic]
@@ -82,10 +82,10 @@ show_error_codes = true
 [[tool.mypy.overrides]]
 module = [
   'segmantic.prepro.*',
-  'segmantic.util.*'
+  'segmantic.utils.*'
 ]
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = "itk.*,PIL,matplotlib.*,torch,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml,scipy.*,adabelief_pytorch,h5py,SimpleITK,vtk.*"
+module = "itk.*,PIL,matplotlib.*,torch,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml,scipy.*,adabelief_pytorch,h5py,SimpleITK,vtk.*,sitk_cli"
 ignore_missing_imports = true

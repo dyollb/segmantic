@@ -6,8 +6,8 @@ import typer
 
 from ..image.labels import load_tissue_list
 from ..seg import monai_unet
-from ..util import config
-from ..util.cli import get_default_args, validate_args
+from ..utils import config
+from ..utils.cli import get_default_args, validate_args
 
 app = typer.Typer()
 
