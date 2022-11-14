@@ -2,9 +2,9 @@ import json
 from pathlib import Path
 from typing import Dict, List
 
-import itk
 import numpy as np
 import pytest
+import SimpleITK as sitk
 from monai.transforms import AsDiscreted, Compose, EnsureChannelFirstd, LoadImaged
 from numpy.testing import assert_almost_equal
 
@@ -15,7 +15,7 @@ from segmantic.detect.transforms import (
     LoadVert,
     SaveVert,
 )
-from segmantic.prepro.itk_image import ImageAnyd, make_itk_image
+from segmantic.image.processing import make_image
 
 KEY_0 = "point_0"
 KEY_1 = "point_1"
@@ -33,14 +33,14 @@ def landmarks() -> Dict[str, List[float]]:
 
 
 @pytest.fixture
-def example_image() -> ImageAnyd:
-    image = make_itk_image(shape=[30, 20, 10], spacing=[1.0, 0.85, 2.5], value=0)
+def example_image() -> sitk.Image:
+    image = make_image(shape=[30, 20, 10], spacing=[1.0, 0.85, 2.5], value=0)
     mat = np.eye(3, 3)
     mat[:2, :] = 0
     mat[0, 1] = -1.0
     mat[1, 0] = 1.0
-    image.SetDirection(mat)
-    image.SetOrigin(np.ones((3,)))
+    image.SetDirection(mat.flatten().tolist())
+    image.SetOrigin([1] * 3)
     return image
 
 
@@ -63,13 +63,13 @@ def test_LoadVert(tmp_path: Path, landmarks: Dict[str, List[float]]):
 
 
 def test_EmbedVert(
-    tmp_path: Path, landmarks: Dict[str, List[float]], example_image: ImageAnyd
+    tmp_path: Path, landmarks: Dict[str, List[float]], example_image: sitk.Image
 ):
     vert_file = tmp_path / "points.json"
     vert_file.write_text(json.dumps(landmarks))
 
     img_file = tmp_path / "image.nii.gz"
-    itk.imwrite(example_image, f"{img_file}")
+    sitk.WriteImage(example_image, img_file)
 
     tr = Compose(
         [
@@ -88,13 +88,13 @@ def test_EmbedVert(
 
 
 def test_Vert_RoundTrip(
-    tmp_path: Path, landmarks: Dict[str, List[float]], example_image: ImageAnyd
+    tmp_path: Path, landmarks: Dict[str, List[float]], example_image: sitk.Image
 ):
     vert_file = tmp_path / "points.json"
     vert_file.write_text(json.dumps(landmarks))
 
     img_file = tmp_path / "image.nii.gz"
-    itk.imwrite(example_image, f"{img_file}")
+    sitk.WriteImage(example_image, img_file)
 
     tr = Compose(
         [
@@ -119,9 +119,9 @@ def test_Vert_RoundTrip(
     assert_almost_equal(np.array(verts[KEY_1]), np.array(TEST_POINT_1), decimal=4)
 
 
-def test_BoundingBox(tmp_path: Path, example_image: ImageAnyd):
+def test_BoundingBox(tmp_path: Path, example_image: sitk.Image):
     img_file = tmp_path / "image.nii.gz"
-    itk.imwrite(example_image, f"{img_file}")
+    sitk.WriteImage(example_image, img_file)
 
     tr = Compose(
         [
@@ -136,11 +136,13 @@ def test_BoundingBox(tmp_path: Path, example_image: ImageAnyd):
     bbox: list = d["result"]["bbox"]
     assert bbox[0] == bbox[1]
 
-    arr = itk.array_from_image(example_image)
+    arr = sitk.GetArrayFromImage(example_image)
     arr[5:7, :, 10:23] = 1
-    itk.imwrite(itk.image_from_array(arr), f"{img_file}")
+    image2 = sitk.GetImageFromArray(arr)
+    sitk.WriteImage(image2, img_file)
     d = tr({"image": img_file})
     assert "result" in d
     assert "bbox" in d["result"]
     bbox = d["result"]["bbox"]
+    print(bbox)
     np.testing.assert_array_equal(bbox, np.asarray([[10, 0, 5], [23, 20, 7]]))

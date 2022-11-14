@@ -1,17 +1,16 @@
-import os
-import numpy as np
-import itk
-import typer
 import json
+import os
 from pathlib import Path
 
-import segmantic
-from segmantic.prepro.labels import (
+import numpy as np
+import SimpleITK as sitk
+import typer
+
+from segmantic.image.labels import (
+    build_tissue_mapping,
     load_tissue_list,
     save_tissue_list,
-    build_tissue_mapping,
 )
-
 
 drcmr_labels_16 = [
     "Background",
@@ -34,11 +33,11 @@ drcmr_labels_16 = [
 ]
 
 
-def premap(name: str):
+def premap(name: str) -> str:
     return "Other_tissues" if "SAT" == name else name
 
 
-def map_bone_fg_bg(name: str):
+def map_bone_fg_bg(name: str) -> str:
     if name.startswith("Bone_"):
         return "Bone"
     elif name == "Background":
@@ -46,7 +45,7 @@ def map_bone_fg_bg(name: str):
     return "Head"
 
 
-def map_bone_skin_air_fg_bg(name: str):
+def map_bone_skin_air_fg_bg(name: str) -> str:
     if name.startswith("Bone_"):
         return "Bone"
     elif name == "Air_internal":
@@ -58,7 +57,7 @@ def map_bone_skin_air_fg_bg(name: str):
     return "Head"
 
 
-def map_vessels2other(name: str):
+def map_vessels2other(name: str) -> str:
     if name.startswith("Bone_"):
         return "Bone"
     elif "Vein" == name or "Artery" == name:
@@ -94,7 +93,11 @@ def main(
     if os.path.exists(input2output):
         with open(input2output) as f:
             i2omap = json.load(f)
-        mapper = lambda n: i2omap[n]
+
+        def _map(n: str) -> str:
+            return i2omap[n]  # type: ignore
+
+        mapper = _map
     elif input2output in locals():
         mapper = locals()[str(input2output)]
     else:
@@ -107,13 +110,15 @@ def main(
     save_tissue_list(omap, output_dir / "labels_5.txt")
 
     for input_file in input_dir.glob("*.nii.gz"):
-        image = segmantic.imread(input_file)
-        image_view = itk.array_view_from_image(image)
-        image_view[:] = i2o[image_view[:]]
+        image = sitk.ReadImage(input_file)
+        image_np = sitk.GetArrayFromImage(image)
+        image_np[:] = i2o[image_np[:]]
+        image_mapped = sitk.GetImageFromArray(image_np)
+        image_mapped.CopyInformation(image)
 
-        assert len(np.unique(image)) == np.max(image) + 1
+        assert len(np.unique(image_np)) == np.max(image_np) + 1
 
-        segmantic.imwrite(image, output_dir / input_file.name)
+        sitk.WriteImage(image_mapped, output_dir / input_file.name)
 
 
 if __name__ == "__main__":

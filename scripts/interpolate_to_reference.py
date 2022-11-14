@@ -1,16 +1,16 @@
 from pathlib import Path
 
-import itk
+import SimpleITK as sitk
 import typer
 
-from segmantic.prepro.itk_image import resample_to_ref
+from segmantic.image.processing import resample_to_ref
 
 
-def main(input: Path, ref: Path, output: Path) -> None:
-    input_img = itk.imread(f"{input}")
-    ref_img = itk.imread(f"{ref}")
-    out_img = resample_to_ref(input_img, ref_img)
-    itk.imwrite(out_img, f"{output}")
+def main(input: Path, ref: Path, output: Path, nearest: bool) -> None:
+    input_img = sitk.ReadImage(input)
+    ref_img = sitk.ReadImage(ref)
+    out_img = resample_to_ref(input_img, ref_img, nearest=nearest)
+    sitk.WriteImage(out_img, output)
 
 
 if __name__ == "__main__":

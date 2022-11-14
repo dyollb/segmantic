@@ -6,7 +6,7 @@ import numpy as np
 import typer
 from monai.utils.module import optional_import
 
-from segmantic.prepro.labels import load_tissue_list
+from segmantic.image.labels import load_tissue_list
 
 vtk, _ = optional_import("vtk")
 

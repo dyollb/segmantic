@@ -1,6 +1,6 @@
 import numpy as np
 
-from segmantic.prepro.itk_image import array_view_reverse_ordering
+from segmantic.image.utils import array_view_reverse_ordering
 
 
 def test_array_view_reverse_ordering():

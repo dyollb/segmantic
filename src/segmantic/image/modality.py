@@ -28,8 +28,8 @@ def bias_correct(
 
     corrector.Execute(image, mask)
     log_bias_field = corrector.GetLogBiasFieldAsImage(input)
-    corrected_image_full_resolution = input / sitk.Exp(log_bias_field)
-    return corrected_image_full_resolution
+    corrected_full_resolution: sitk.Image = input / sitk.Exp(log_bias_field)
+    return corrected_full_resolution
 
 
 def scale_clamp_ct(img: sitk.Image) -> sitk.Image:

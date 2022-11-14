@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import colors
 
-from ..prepro.labels import RGBTuple, load_tissue_colors
+from ..image.labels import RGBTuple, load_tissue_colors
 
 
 def make_tissue_cmap(tissue_list_file: Path) -> colors.ListedColormap:
@@ -111,7 +111,7 @@ def plot_confusion_matrix(
             plt.text(
                 j,
                 i,
-                "{:0.4f}".format(cm[i, j]),
+                f"{cm[i, j]:0.4f}",
                 horizontalalignment="center",
                 color="white" if cm[i, j] > thresh else "black",
             )
@@ -119,16 +119,14 @@ def plot_confusion_matrix(
             plt.text(
                 j,
                 i,
-                "{:,}".format(cm[i, j]),
+                f"{cm[i, j]:,}",
                 horizontalalignment="center",
                 color="white" if cm[i, j] > thresh else "black",
             )
 
     plt.tight_layout()
     plt.ylabel("True label")
-    plt.xlabel(
-        "Predicted label\naccuracy={:0.4f}; misclass={:0.4f}".format(accuracy, misclass)
-    )
+    plt.xlabel(f"Predicted label\naccuracy={accuracy:0.4f}; misclass={misclass:0.4f}")
     if file_name:
         plt.savefig(file_name)
     else:

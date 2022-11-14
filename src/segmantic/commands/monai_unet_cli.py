@@ -4,7 +4,7 @@ from typing import List
 
 import typer
 
-from ..prepro.labels import load_tissue_list
+from ..image.labels import load_tissue_list
 from ..seg import monai_unet
 from ..util import config
 from ..util.cli import get_default_args, validate_args

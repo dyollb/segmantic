@@ -58,7 +58,7 @@ from pytorch_lightning.callbacks import (
 )
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from ..prepro.labels import load_tissue_list
+from ..image.labels import load_tissue_list
 from ..util import config
 from .dataset import PairedDataSet
 from .evaluation import confusion_matrix

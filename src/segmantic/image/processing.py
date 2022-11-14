@@ -35,7 +35,7 @@ def extract_slices(image: sitk.Image, axis: int = 2) -> List[sitk.Image]:
     """
     slices = []
 
-    size = image.GetSize()
+    size = list(image.GetSize())
     size[axis] = 1
     index = [0, 0, 0]
 
@@ -50,8 +50,8 @@ def resample(
 ) -> sitk.Image:
     """resample (2D/3D) image to a target spacing"""
 
-    size = image.GetSize()
-    spacing = image.GetSpacing()
+    size = list(image.GetSize())
+    spacing = list(image.GetSpacing())
     for d in range(image.GetDimension()):
         size[d] = math.ceil(size[d] * spacing[d] / target_spacing[d])
         spacing[d] = target_spacing[d]
@@ -66,7 +66,8 @@ def resample(
     filter.SetDefaultPixelValue(0)
 
     filter.SetTransform(sitk.Transform())  # identity
-    return filter.Execute(image)
+    resampled: sitk.Image = filter.Execute(image)
+    return resampled
 
 
 def apply_transform(
@@ -92,7 +93,8 @@ def apply_transform(
     filter.SetDefaultPixelValue(0)
 
     filter.SetTransform(transform)
-    return filter.Execute(moving_image)
+    resampled: sitk.Image = filter.Execute(moving_image)
+    return resampled
 
 
 def resample_to_ref(
@@ -147,4 +149,7 @@ def crop(
     img: sitk.Image, target_offset: Sequence[int], target_size: Sequence[int]
 ) -> sitk.Image:
     """Crop (2D/3D) image to the target size/offset"""
-    return sitk.Extract(img, target_size, target_offset, _COLLAPSE_STRATEGY_SUBMATRIX)
+    cropped: sitk.Image = sitk.Extract(
+        img, target_size, target_offset, _COLLAPSE_STRATEGY_SUBMATRIX
+    )
+    return cropped

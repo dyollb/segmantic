@@ -1,12 +1,11 @@
 from pathlib import Path
 from typing import Dict
 
-import itk
 import pytest
+import SimpleITK as sitk
 from monai.transforms import LoadImaged
 
 from segmantic.data.transforms import LabelInfo, iSegSaver
-from segmantic.prepro.itk_image import Image3
 
 
 @pytest.fixture
@@ -14,13 +13,15 @@ def labels() -> Dict[int, LabelInfo]:
     return {0: ("BG", 0.0, 0.0, 0.0), 1: ("FG", 1.0, 1.0, 1.0)}
 
 
-def test_iSegSaver(tmp_path: Path, labelfield: Image3, labels: Dict[int, LabelInfo]):
+def test_iSegSaver(
+    tmp_path: Path, labelfield: sitk.Image, labels: Dict[int, LabelInfo]
+):
     image_file = tmp_path / "image.nii.gz"
     label_file = tmp_path / "label.nii.gz"
     output_dir = tmp_path / "output"
 
-    itk.imwrite(labelfield, f"{label_file}")
-    itk.imwrite(labelfield, f"{image_file}")
+    sitk.WriteImage(labelfield, label_file)
+    sitk.WriteImage(labelfield, image_file)
 
     dataset = {"image": str(image_file), "label": str(label_file)}
     data = LoadImaged(keys=["image", "label"])(dataset)
