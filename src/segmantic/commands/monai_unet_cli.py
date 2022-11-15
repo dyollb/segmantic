@@ -210,5 +210,54 @@ def predict(
     )
 
 
+@app.command()
+def create_ensemble(
+    image_dir: Path = typer.Option(
+        ..., "--image-dir", "-i", help="directory containing images"
+    ),
+    labels_dir: Path = typer.Option(
+        None,
+        "--labels-dir",
+        "-l",
+        help="directory containing labelfields",
+    ),
+    models_dir: Path = typer.Option(
+        ..., "--models-dir", "-m", help="saved model checkpoints"
+    ),
+    tissue_list: Path = typer.Option(
+        ..., "--tissue-list", "-t", help="label descriptors in iSEG format"
+    ),
+    results_dir: Path = typer.Option(
+        None, "--results-dir", "-r", help="output directory"
+    ),
+    spacing: List[int] = typer.Option(
+        [], "--spacing", help="if specified, the image is first resampled"
+    ),
+    gpu_ids: List[int] = [0],
+) -> None:
+    """Create Ensemble model
+
+    Example invocation:
+
+        -i ./dataset/images -m model.ckpt --results-dir ./results --tissue-list ./dataset/labels.txt
+    """
+
+    def _get_nifti_files(dir: Path) -> List[Path]:
+        return sorted(f for f in dir.glob("*.nii.gz"))
+
+    def _get_ckpt_files(dir: Path) -> List[Path]:
+        return sorted(f for f in dir.glob("*.ckpt"))
+
+    monai_unet.ensemble_creator(
+        model_files=_get_ckpt_files(models_dir),
+        test_images=_get_nifti_files(image_dir),
+        test_labels=_get_nifti_files(labels_dir) if labels_dir else [],
+        tissue_dict=load_tissue_list(tissue_list),
+        output_dir=results_dir,
+        spacing=spacing,
+        gpu_ids=gpu_ids,
+    )
+
+
 if __name__ == "__main__":
     app()

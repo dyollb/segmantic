@@ -28,7 +28,6 @@ from monai.networks.layers import Norm
 from monai.networks.nets import UNet
 from monai.networks.utils import one_hot
 from monai.transforms import (
-    Activationsd,
     AsDiscrete,
     AsDiscreted,
     Compose,
@@ -814,7 +813,7 @@ def ensemble_evaluate(post_transforms, models, device, test_loader):
     evaluator = EnsembleEvaluator(
         device=device,
         val_data_loader=test_loader,
-        pred_keys=["pred0", "pred1", "pred2", "pred3", "pred4"],
+        pred_keys=["pred0", "pred1", "pred2"],
         networks=models,
         inferer=SlidingWindowInferer(
             roi_size=(96, 96, 96), sw_batch_size=4, overlap=0.5
@@ -851,9 +850,14 @@ def ensemble_creator(
     else:
         test_files = [{"image": i} for i in test_images]
 
-    pre_transforms = models[0].default_preprocessing(
-        keys=["image", "label"] if test_labels else ["image"],
-        spacing=spacing,
+    pre_transforms = Compose(
+        [
+            models[0].default_preprocessing(
+                keys=["image", "label"] if test_labels else ["image"],
+                spacing=spacing,
+            ),
+            AsDiscreted(keys="label", to_onehot=models[0].num_classes),
+        ]
     )
 
     # data loader
@@ -883,10 +887,48 @@ def ensemble_creator(
             )
         ]
 
-    """
+    mean_post_transforms = Compose(
+        [
+            EnsureTyped(keys=["pred0", "pred1", "pred2"]),
+            MeanEnsembled(
+                keys=["pred0", "pred1", "pred2"],
+                output_key="pred",
+                # in this particular example, we use validation metrics as weights
+                weights=[0.95, 0.94, 0.95],
+            ),
+            # Activationsd(keys="pred", sigmoid=True),
+            AsDiscreted(keys="pred", threshold=0.5),
+        ]
+        + save_transforms
+    )
+    ensemble_evaluate(
+        mean_post_transforms, models, device=device, test_loader=test_loader
+    )
+
+    vote_post_transforms = Compose(
+        [
+            EnsureTyped(keys=["pred0", "pred1", "pred2"]),
+            # Activationsd(
+            #    keys=["pred0", "pred1", "pred2"], sigmoid=True
+            # ),
+            # transform data into discrete before voting
+            AsDiscreted(keys=["pred0", "pred1", "pred2"], threshold=0.5),
+            VoteEnsembled(keys=["pred0", "pred1", "pred2"], output_key="pred"),
+        ]
+        + save_transforms
+    )
+    ensemble_evaluate(
+        vote_post_transforms, models, device=device, test_loader=test_loader
+    )
+
+    output_imgs = sorted(f for f in output_dir.glob("*.nii.gz"))
+    ensemble_files = [{"image": i, "pred": l} for i, l in zip(test_images, output_imgs)]
+    keys = ["image", "pred"]
     # invert transforms (e.g. cropping)
     post_transforms = Compose(
         [
+            LoadImaged(keys=keys, reader="ITKReader"),
+            EnsureChannelFirstd(keys=keys),
             EnsureTyped(keys="pred"),
             Invertd(
                 keys="pred",
@@ -899,42 +941,5 @@ def ensemble_creator(
         ]
         + save_transforms
     )
-    """
 
-    mean_post_transforms = Compose(
-        [
-            EnsureTyped(keys=["pred0", "pred1", "pred2", "pred3", "pred4"]),
-            MeanEnsembled(
-                keys=["pred0", "pred1", "pred2", "pred3", "pred4"],
-                output_key="pred",
-                # in this particular example, we use validation metrics as weights
-                weights=[0.95, 0.94, 0.95, 0.94, 0.90],
-            ),
-            Activationsd(keys="pred", sigmoid=True),
-            AsDiscreted(keys="pred", threshold=0.5),
-        ]
-        + save_transforms
-    )
-    ensemble_evaluate(
-        mean_post_transforms, models, device=device, test_loader=test_loader
-    )
-
-    vote_post_transforms = Compose(
-        [
-            EnsureTyped(keys=["pred0", "pred1", "pred2", "pred3", "pred4"]),
-            Activationsd(
-                keys=["pred0", "pred1", "pred2", "pred3", "pred4"], sigmoid=True
-            ),
-            # transform data into discrete before voting
-            AsDiscreted(
-                keys=["pred0", "pred1", "pred2", "pred3", "pred4"], threshold=0.5
-            ),
-            VoteEnsembled(
-                keys=["pred0", "pred1", "pred2", "pred3", "pred4"], output_key="pred"
-            ),
-        ]
-        + save_transforms
-    )
-    ensemble_evaluate(
-        vote_post_transforms, models, device=device, test_loader=test_loader
-    )
+    post_transforms(ensemble_files)
