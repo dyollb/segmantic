@@ -19,6 +19,8 @@ from monai.data import (
     decollate_batch,
     list_data_collate,
 )
+from monai.engines import EnsembleEvaluator
+from monai.handlers import MeanDice, from_engine
 from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
 from monai.metrics import ConfusionMatrixMetric, CumulativeAverage, DiceMetric
@@ -26,6 +28,7 @@ from monai.networks.layers import Norm
 from monai.networks.nets import UNet
 from monai.networks.utils import one_hot
 from monai.transforms import (
+    Activationsd,
     AsDiscrete,
     AsDiscreted,
     Compose,
@@ -35,6 +38,7 @@ from monai.transforms import (
     EnsureTyped,
     Invertd,
     LoadImaged,
+    MeanEnsembled,
     NormalizeIntensityd,
     Orientationd,
     RandAdjustContrastd,
@@ -47,6 +51,7 @@ from monai.transforms import (
     RandRotated,
     RandZoomd,
     SaveImaged,
+    VoteEnsembled,
 )
 from monai.transforms.spatial.dictionary import Spacingd
 from monai.transforms.transform import MapTransform, Transform
@@ -803,3 +808,133 @@ def cross_validate(
                         )
             else:
                 continue
+
+
+def ensemble_evaluate(post_transforms, models, device, test_loader):
+    evaluator = EnsembleEvaluator(
+        device=device,
+        val_data_loader=test_loader,
+        pred_keys=["pred0", "pred1", "pred2", "pred3", "pred4"],
+        networks=models,
+        inferer=SlidingWindowInferer(
+            roi_size=(96, 96, 96), sw_batch_size=4, overlap=0.5
+        ),
+        postprocessing=post_transforms,
+        key_val_metric={
+            "test_mean_dice": MeanDice(
+                include_background=True,
+                output_transform=from_engine(["pred", "label"]),
+            )
+        },
+    )
+    evaluator.run()
+
+
+def ensemble_creator(
+    model_files: List[Path],
+    test_images: List[Path],
+    test_labels: Optional[List[Path]] = None,
+    output_dir: Path = None,
+    tissue_dict: Dict[str, int] = None,
+    spacing: Sequence[float] = [],
+    gpu_ids: List[int] = [],
+):
+    device = make_device(gpu_ids)
+
+    models = [Net.load_from_checkpoint(str(ckpt_path)) for ckpt_path in model_files]
+
+    if test_labels:
+        assert len(test_images) == len(test_labels)
+        test_files = [
+            {"image": i, "label": l} for i, l in zip(test_images, test_labels)
+        ]
+    else:
+        test_files = [{"image": i} for i in test_images]
+
+    pre_transforms = models[0].default_preprocessing(
+        keys=["image", "label"] if test_labels else ["image"],
+        spacing=spacing,
+    )
+
+    # data loader
+    test_loader = DataLoader(
+        Dataset(
+            data=test_files,
+            transform=pre_transforms,
+        ),
+        batch_size=1,
+        num_workers=0,
+    )
+
+    # save predicted labels
+    save_transforms: List[MapTransform] = []
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+        save_transforms = [
+            SaveImaged(
+                keys="pred",
+                output_dir=output_dir,
+                output_postfix="seg",
+                resample=False,
+                separate_folder=False,
+                print_log=False,
+                writer="ITKWriter",
+            )
+        ]
+
+    """
+    # invert transforms (e.g. cropping)
+    post_transforms = Compose(
+        [
+            EnsureTyped(keys="pred"),
+            Invertd(
+                keys="pred",
+                transform=pre_transforms,  # type: ignore [arg-type]
+                orig_keys="image",
+                nearest_interp=False,
+                to_tensor=True,
+            ),
+            AsDiscreted(keys="pred", argmax=True),
+        ]
+        + save_transforms
+    )
+    """
+
+    mean_post_transforms = Compose(
+        [
+            EnsureTyped(keys=["pred0", "pred1", "pred2", "pred3", "pred4"]),
+            MeanEnsembled(
+                keys=["pred0", "pred1", "pred2", "pred3", "pred4"],
+                output_key="pred",
+                # in this particular example, we use validation metrics as weights
+                weights=[0.95, 0.94, 0.95, 0.94, 0.90],
+            ),
+            Activationsd(keys="pred", sigmoid=True),
+            AsDiscreted(keys="pred", threshold=0.5),
+        ]
+        + save_transforms
+    )
+    ensemble_evaluate(
+        mean_post_transforms, models, device=device, test_loader=test_loader
+    )
+
+    vote_post_transforms = Compose(
+        [
+            EnsureTyped(keys=["pred0", "pred1", "pred2", "pred3", "pred4"]),
+            Activationsd(
+                keys=["pred0", "pred1", "pred2", "pred3", "pred4"], sigmoid=True
+            ),
+            # transform data into discrete before voting
+            AsDiscreted(
+                keys=["pred0", "pred1", "pred2", "pred3", "pred4"], threshold=0.5
+            ),
+            VoteEnsembled(
+                keys=["pred0", "pred1", "pred2", "pred3", "pred4"], output_key="pred"
+            ),
+        ]
+        + save_transforms
+    )
+    ensemble_evaluate(
+        vote_post_transforms, models, device=device, test_loader=test_loader
+    )
