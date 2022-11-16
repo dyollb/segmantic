@@ -42,7 +42,7 @@ def save_tissue_list(
     """Save tissue list in iSEG format
 
     Example:
-        from segmantic.prepro import labels
+        from segmantic.image import labels
         labels.save_tissue_list({ 'Bone': 1, 'Fat': 2, 'Skin': 3 }, 'tissues.txt')
 
     Note:
@@ -78,7 +78,7 @@ def save_tissue_list(
             name = label_tissue_map[label]
             r, g, b = tissue_color_map(name)
             print(
-                "C{:.2f} {:.2f} {:.2f} {:.2f} {}".format(r, g, b, 0.5, name),
+                f"C{r:.2f} {g:.2f} {b:.2f} {0.5:.2f} {name}",
                 file=f,
             )
 

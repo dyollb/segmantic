@@ -1,7 +1,7 @@
-import itk
 import numpy as np
+import SimpleITK as sitk
 
-from segmantic.prepro.core import make_image
+from segmantic.image.processing import make_image
 from segmantic.seg import evaluation
 
 
@@ -10,7 +10,7 @@ def test_confusion_matrix():
     labelfield[2:3, 2:4] = 1
     labelfield[3:5, 3:4] = 2
 
-    view = itk.array_view_from_image(labelfield).flatten()
+    view = sitk.GetArrayViewFromImage(labelfield).flatten()
     num_classes = int(np.max(view) + 1)
     assert num_classes == 3
 

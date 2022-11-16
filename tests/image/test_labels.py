@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from segmantic.prepro import labels
+from segmantic.image import labels
 
 
 @pytest.fixture

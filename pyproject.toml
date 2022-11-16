@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "setuptools-scm"]
+requires = ["setuptools>=62.0", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -23,21 +23,21 @@ classifiers = [
     "License :: OSI Approved :: MIT License"
 ]
 dependencies = [
+    "adabelief_pytorch",
     "h5py",
-    "itk",
-    "makefun",
+    "itk-io",
     "matplotlib",
     "monai",
     "nibabel",
     "pytorch-lightning",
     "scikit-learn",
     "SimpleITK",
+    "sitk-cli",
     "tensorboard",
     "torch",
     "torchvision",
     "typer",
-    "typing-extensions",
-    "adabelief_pytorch"
+    "typing-extensions"
 ]
 
 [tool.setuptools.dynamic]
@@ -62,6 +62,9 @@ dev = [
 repository = "https://github.com/dyollb/segmantic.git"
 documentation = "https://dyollb.github.io/segmantic/"
 
+[project.scripts]
+segmantic-unet = "segmantic.commands.monai_unet_cli:main"
+
 [tool.isort]
 profile = "black"
 
@@ -82,10 +85,10 @@ show_error_codes = true
 [[tool.mypy.overrides]]
 module = [
   'segmantic.prepro.*',
-  'segmantic.util.*'
+  'segmantic.utils.*'
 ]
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = "itk.*,PIL,matplotlib.*,torch,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml,scipy.*,vtk,adabelief_pytorch,h5py"
+module = "itk.*,PIL,matplotlib.*,torch,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml,scipy.*,adabelief_pytorch,h5py,SimpleITK,vtk.*,sitk_cli"
 ignore_missing_imports = true

@@ -58,8 +58,8 @@ from pytorch_lightning.callbacks import (
 )
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from ..prepro.labels import load_tissue_list
-from ..util import config
+from ..image.labels import load_tissue_list
+from ..utils import config
 from .dataset import PairedDataSet
 from .evaluation import confusion_matrix
 from .utils import make_device
@@ -801,5 +801,3 @@ def cross_validate(
                             spacing=[1, 1, 1],
                             gpu_ids=gpu_ids,
                         )
-            else:
-                continue

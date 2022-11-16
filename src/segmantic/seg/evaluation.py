@@ -1,12 +1,12 @@
 from typing import Dict
 
-import itk
 import numpy as np
+import SimpleITK as sitk
 
-from ..prepro.core import ImageNd
 
-
-def hausdorff_surface_distance(y_pred: ImageNd, y_ref: ImageNd) -> Dict[str, float]:
+def hausdorff_surface_distance(
+    y_pred: sitk.Image, y_ref: sitk.Image
+) -> Dict[str, float]:
     """Compute symmetric surface distances between two binary masks
 
     Args:
@@ -16,14 +16,14 @@ def hausdorff_surface_distance(y_pred: ImageNd, y_ref: ImageNd) -> Dict[str, flo
     Returns:
         Dict[str, float]: keys are 'mean', 'median', 'std', 'max'
     """
-    seg_surface = itk.binary_contour_image_filter(y_pred, foreground_value=1)
-    ref_surface = itk.binary_contour_image_filter(y_ref, foreground_value=1)
+    seg_surface = sitk.BinaryContour(y_pred, foregroundValue=1)
+    ref_surface = sitk.BinaryContour(y_ref, foregroundValue=1)
 
-    seg_distance = itk.signed_maurer_distance_map_image_filter(
-        y_pred, use_image_spacing=True, squared_distance=False, inside_is_positive=False
+    seg_distance = sitk.SignedMaurerDistanceMap(
+        y_pred, useImageSpacing=True, squaredDistance=False, insideIsPositive=False
     )
-    ref_distance = itk.signed_maurer_distance_map_image_filter(
-        y_ref, use_image_spacing=True, squared_distance=False, inside_is_positive=False
+    ref_distance = sitk.SignedMaurerDistanceMap(
+        y_ref, useImageSpacing=True, squaredDistance=False, insideIsPositive=False
     )
 
     # get distance at contour of foreground label
@@ -51,7 +51,9 @@ def hausdorff_surface_distance(y_pred: ImageNd, y_ref: ImageNd) -> Dict[str, flo
     }
 
 
-def hausdorff_pointwise_distance(y_pred: ImageNd, y_ref: ImageNd) -> Dict[str, float]:
+def hausdorff_pointwise_distance(
+    y_pred: sitk.Image, y_ref: sitk.Image
+) -> Dict[str, float]:
     """Compute symmetric point-wise distances between two binary masks
 
     Args:
@@ -61,16 +63,19 @@ def hausdorff_pointwise_distance(y_pred: ImageNd, y_ref: ImageNd) -> Dict[str, f
     Returns:
         Dict[str, float]: keys are 'mean', 'median', 'std', 'max'
     """
-    seg_distance = itk.signed_maurer_distance_map_image_filter(
-        y_pred, use_image_spacing=True, squared_distance=False, inside_is_positive=False
+    seg_distance = sitk.SignedMaurerDistanceMap(
+        y_pred, useImageSpacing=True, squaredDistance=False, insideIsPositive=False
     )
-    ref_distance = itk.signed_maurer_distance_map_image_filter(
-        y_ref, use_image_spacing=True, squared_distance=False, inside_is_positive=False
+    ref_distance = sitk.SignedMaurerDistanceMap(
+        y_ref, useImageSpacing=True, squaredDistance=False, insideIsPositive=False
     )
 
+    def to_np(img: sitk.Image):
+        return sitk.GetArrayViewFromImage(img)
+
     # get distance inside foreground label
-    ref2seg_distance = seg_distance[np.nonzero(y_ref)]
-    seg2ref_distance = ref_distance[np.nonzero(y_pred)]
+    ref2seg_distance = to_np(seg_distance)[np.nonzero(to_np(y_ref))]
+    seg2ref_distance = to_np(ref_distance)[np.nonzero(to_np(y_pred))]
 
     # compute statistics on symmetric distances (both directions)
     all_surface_distances = np.concatenate(
