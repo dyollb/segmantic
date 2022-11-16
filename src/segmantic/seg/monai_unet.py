@@ -20,7 +20,8 @@ from monai.data import (
     list_data_collate,
 )
 from monai.engines import EnsembleEvaluator
-from monai.handlers import MeanDice, from_engine
+
+# from monai.handlers import MeanDice, from_engine
 from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
 from monai.metrics import ConfusionMatrixMetric, CumulativeAverage, DiceMetric
@@ -820,12 +821,12 @@ def ensemble_evaluate(post_transforms, models, device, test_loader):
             roi_size=(96, 96, 96), sw_batch_size=4, overlap=0.5
         ),
         postprocessing=post_transforms,
-        key_val_metric={
-            "test_mean_dice": MeanDice(
-                include_background=False,
-                output_transform=from_engine(["pred", "label"]),
-            )
-        },
+        # key_val_metric={
+        #    "test_mean_dice": MeanDice(
+        #        include_background=False,
+        #        output_transform=from_engine(["pred", "label"]),
+        #    )
+        # },
     )
     evaluator.run()
 
@@ -933,13 +934,6 @@ def ensemble_creator(
                 # ),
                 # transform data into discrete before voting
                 # AsDiscreted(keys=["pred0", "pred1", "pred2"], threshold=0.5),
-                Invertd(
-                    keys=["pred0", "pred1", "pred2"],
-                    transform=pre_transforms,  # type: ignore [arg-type]
-                    orig_keys="image",
-                    nearest_interp=False,
-                    to_tensor=True,
-                ),
                 SelectBestEnsembled(
                     keys=["pred0", "pred1", "pred2"],
                     output_key="pred",
@@ -947,6 +941,13 @@ def ensemble_creator(
                     candidate_per_tissue_path=Path(
                         "D:/test_data/T1T2/best_net_for_tissue.yaml"
                     ),
+                ),
+                Invertd(
+                    keys="pred",
+                    transform=pre_transforms,  # type: ignore [arg-type]
+                    orig_keys="image",
+                    nearest_interp=False,
+                    to_tensor=True,
                 ),
             ]
             + save_transforms
