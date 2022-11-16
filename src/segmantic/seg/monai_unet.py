@@ -63,6 +63,7 @@ from pytorch_lightning.callbacks import (
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from ..prepro.labels import load_tissue_list
+from ..seg.transforms import SelectBestEnsembled
 from ..util import config
 from .dataset import PairedDataSet
 from .evaluation import confusion_matrix
@@ -821,7 +822,7 @@ def ensemble_evaluate(post_transforms, models, device, test_loader):
         postprocessing=post_transforms,
         key_val_metric={
             "test_mean_dice": MeanDice(
-                include_background=True,
+                include_background=False,
                 output_transform=from_engine(["pred", "label"]),
             )
         },
@@ -836,11 +837,14 @@ def ensemble_creator(
     output_dir: Path = None,
     tissue_dict: Dict[str, int] = None,
     spacing: Sequence[float] = [],
+    combination_mode: str = "SelectBest",
     gpu_ids: List[int] = [],
 ):
     device = make_device(gpu_ids)
 
     models = [Net.load_from_checkpoint(str(ckpt_path)) for ckpt_path in model_files]
+
+    print(tissue_dict)
 
     if test_labels:
         assert len(test_images) == len(test_labels)
@@ -856,7 +860,7 @@ def ensemble_creator(
                 keys=["image", "label"] if test_labels else ["image"],
                 spacing=spacing,
             ),
-            AsDiscreted(keys="label", to_onehot=models[0].num_classes),
+            # AsDiscreted(keys="label", to_onehot=models[0].num_classes),
         ]
     )
 
@@ -886,60 +890,67 @@ def ensemble_creator(
                 writer="ITKWriter",
             )
         ]
-
-    mean_post_transforms = Compose(
-        [
-            EnsureTyped(keys=["pred0", "pred1", "pred2"]),
-            MeanEnsembled(
-                keys=["pred0", "pred1", "pred2"],
-                output_key="pred",
-                # in this particular example, we use validation metrics as weights
-                weights=[0.95, 0.94, 0.95],
-            ),
-            # Activationsd(keys="pred", sigmoid=True),
-            AsDiscreted(keys="pred", threshold=0.5),
-        ]
-        + save_transforms
-    )
-    ensemble_evaluate(
-        mean_post_transforms, models, device=device, test_loader=test_loader
-    )
-
-    vote_post_transforms = Compose(
-        [
-            EnsureTyped(keys=["pred0", "pred1", "pred2"]),
-            # Activationsd(
-            #    keys=["pred0", "pred1", "pred2"], sigmoid=True
-            # ),
-            # transform data into discrete before voting
-            AsDiscreted(keys=["pred0", "pred1", "pred2"], threshold=0.5),
-            VoteEnsembled(keys=["pred0", "pred1", "pred2"], output_key="pred"),
-        ]
-        + save_transforms
-    )
-    ensemble_evaluate(
-        vote_post_transforms, models, device=device, test_loader=test_loader
-    )
-
-    output_imgs = sorted(f for f in output_dir.glob("*.nii.gz"))
-    ensemble_files = [{"image": i, "pred": l} for i, l in zip(test_images, output_imgs)]
-    keys = ["image", "pred"]
-    # invert transforms (e.g. cropping)
-    post_transforms = Compose(
-        [
-            LoadImaged(keys=keys, reader="ITKReader"),
-            EnsureChannelFirstd(keys=keys),
-            EnsureTyped(keys="pred"),
-            Invertd(
-                keys="pred",
-                transform=pre_transforms,  # type: ignore [arg-type]
-                orig_keys="image",
-                nearest_interp=False,
-                to_tensor=True,
-            ),
-            AsDiscreted(keys="pred", argmax=True),
-        ]
-        + save_transforms
-    )
-
-    post_transforms(ensemble_files)
+    if combination_mode == "Mean":
+        mean_post_transforms = Compose(
+            [
+                EnsureTyped(keys=["pred0", "pred1", "pred2"]),
+                MeanEnsembled(
+                    keys=["pred0", "pred1", "pred2"],
+                    output_key="pred",
+                    # in this particular example, we use validation metrics as weights
+                    weights=[0.95, 0.94, 0.95],
+                ),
+                # Activationsd(keys="pred", sigmoid=True),
+                AsDiscreted(keys="pred", threshold=0.5),
+            ]
+            + save_transforms
+        )
+        ensemble_evaluate(
+            mean_post_transforms, models, device=device, test_loader=test_loader
+        )
+    elif combination_mode == "Vote":
+        vote_post_transforms = Compose(
+            [
+                EnsureTyped(keys=["pred0", "pred1", "pred2"]),
+                # Activationsd(
+                #    keys=["pred0", "pred1", "pred2"], sigmoid=True
+                # ),
+                # transform data into discrete before voting
+                AsDiscreted(keys=["pred0", "pred1", "pred2"], threshold=0.5),
+                VoteEnsembled(keys=["pred0", "pred1", "pred2"], output_key="pred"),
+            ]
+            + save_transforms
+        )
+        ensemble_evaluate(
+            vote_post_transforms, models, device=device, test_loader=test_loader
+        )
+    elif combination_mode == "SelectBest":
+        select_best_post_transforms = Compose(
+            [
+                EnsureTyped(keys=["pred0", "pred1", "pred2"]),
+                # Activationsd(
+                #    keys=["pred0", "pred1", "pred2"], sigmoid=True
+                # ),
+                # transform data into discrete before voting
+                # AsDiscreted(keys=["pred0", "pred1", "pred2"], threshold=0.5),
+                Invertd(
+                    keys=["pred0", "pred1", "pred2"],
+                    transform=pre_transforms,  # type: ignore [arg-type]
+                    orig_keys="image",
+                    nearest_interp=False,
+                    to_tensor=True,
+                ),
+                SelectBestEnsembled(
+                    keys=["pred0", "pred1", "pred2"],
+                    output_key="pred",
+                    tissue_dict=tissue_dict,
+                    candidate_per_tissue_path=Path(
+                        "D:/test_data/T1T2/best_net_for_tissue.yaml"
+                    ),
+                ),
+            ]
+            + save_transforms
+        )
+        ensemble_evaluate(
+            select_best_post_transforms, models, device=device, test_loader=test_loader
+        )
