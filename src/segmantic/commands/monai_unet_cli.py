@@ -188,6 +188,8 @@ def predict(
         [], "--spacing", help="if specified, the image is first resampled"
     ),
     gpu_ids: List[int] = [0],
+    image_glob: str = "*.nii.gz",
+    labels_glob: str = "*.nii.gz",
 ) -> None:
     """Predict segmentations
 
@@ -196,15 +198,15 @@ def predict(
         -i ./dataset/images -m model.ckpt --results-dir ./results --tissue-list ./dataset/labels.txt
     """
 
-    def _get_nifti_files(path: Path) -> List[Path]:
+    def _get_files(path: Path, pattern: str) -> List[Path]:
         if path.is_file():
             return [path]
-        return list(sorted(f for f in path.glob("*.nii.gz")))
+        return list(sorted(f for f in path.glob(pattern)))
 
     monai_unet.predict(
         model_file=model_file,
-        test_images=_get_nifti_files(image_dir),
-        test_labels=_get_nifti_files(labels_dir) if labels_dir else [],
+        test_images=_get_files(image_dir, image_glob),
+        test_labels=_get_files(labels_dir, labels_glob) if labels_dir else [],
         tissue_dict=load_tissue_list(tissue_list),
         output_dir=results_dir,
         spacing=spacing,
@@ -212,5 +214,5 @@ def predict(
     )
 
 
-if __name__ == "__main__":
+def main():
     app()

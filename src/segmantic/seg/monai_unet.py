@@ -801,5 +801,3 @@ def cross_validate(
                             spacing=[1, 1, 1],
                             gpu_ids=gpu_ids,
                         )
-            else:
-                continue
