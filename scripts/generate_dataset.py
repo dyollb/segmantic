@@ -4,7 +4,7 @@ from pathlib import Path
 import typer
 
 from segmantic.seg.dataset import find_matching_files
-from segmantic.util.json import PathEncoder
+from segmantic.utils.json import PathEncoder
 
 
 def generate_dataset(

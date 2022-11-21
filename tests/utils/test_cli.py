@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from segmantic.util.cli import get_default_args, is_path, validate_args
+from segmantic.utils.cli import get_default_args, is_path, validate_args
 
 
 def function1(path: Path, arg_int: int, arg_float: float = -1.5):

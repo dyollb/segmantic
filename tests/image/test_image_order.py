@@ -1,6 +1,6 @@
 import numpy as np
 
-from segmantic.prepro.core import array_view_reverse_ordering
+from segmantic.image.utils import array_view_reverse_ordering
 
 
 def test_array_view_reverse_ordering():
@@ -9,7 +9,7 @@ def test_array_view_reverse_ordering():
     im3d = rng.random((12, 13, 14))
     im3d_f = array_view_reverse_ordering(im3d)
 
-    assert im3d_f.flags.owndata == False
+    assert im3d_f.flags.owndata is False
     assert im3d.shape == im3d_f.shape[::-1]
 
     for k in range(12):
@@ -34,12 +34,12 @@ def profile_image_ordering():
     import time
 
     s0 = time.time()
-    x = out_of_order_multiply(im3d_f, 5)
+    _ = out_of_order_multiply(im3d_f, 5)
     s1 = time.time()
     print("%.2f seconds" % (s1 - s0))
 
     t0 = time.time()
-    x = in_order_multiply(im3d, 5)
+    _ = in_order_multiply(im3d, 5)
     t1 = time.time()
     print("%.2f seconds" % (t1 - t0))
 
