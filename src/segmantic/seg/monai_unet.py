@@ -854,7 +854,8 @@ def ensemble_creator(
 
     models = [Net.load_from_checkpoint(str(ckpt_path)) for ckpt_path in model_files]
     num_classes = models[0].num_classes
-    print(tissue_dict)
+
+    ensemble_keys = [f"pred{x}" for x in range(len(models))]
 
     if test_labels:
         assert len(test_images) == len(test_labels)
@@ -870,7 +871,6 @@ def ensemble_creator(
                 keys=["image", "label"] if test_labels else ["image"],
                 spacing=spacing,
             ),
-            # AsDiscreted(keys="label", to_onehot=models[0].num_classes),
         ]
     )
 
@@ -900,15 +900,19 @@ def ensemble_creator(
                 writer="ITKWriter",
             )
         ]
+
     if combination_mode == EnsembleCombination.mean.value:
         mean_post_transforms = Compose(
             [
-                EnsureTyped(keys=["pred0", "pred1", "pred2"]),
+                EnsureTyped(keys=ensemble_keys),
                 MeanEnsembled(
-                    keys=["pred0", "pred1", "pred2"],
+                    keys=ensemble_keys,
                     output_key="pred",
                     # in this particular example, we use validation metrics as weights
-                    weights=[0.95, 0.94, 0.95],
+                    weights=[
+                        float(ckpt_path.stem.split("-")[-1].split("=")[1])
+                        for ckpt_path in model_files
+                    ],
                 ),
                 AsDiscreted(keys="pred", argmax=True),
                 Invertd(
@@ -928,10 +932,10 @@ def ensemble_creator(
     elif combination_mode == EnsembleCombination.vote.value:
         vote_post_transforms = Compose(
             [
-                EnsureTyped(keys=["pred0", "pred1", "pred2"]),
-                AsDiscreted(keys=["pred0", "pred1", "pred2"], argmax=True),
+                EnsureTyped(keys=ensemble_keys),
+                AsDiscreted(keys=ensemble_keys, argmax=True),
                 VoteEnsembled(
-                    keys=["pred0", "pred1", "pred2"],
+                    keys=ensemble_keys,
                     output_key="pred",
                     num_classes=num_classes,
                 ),
@@ -952,14 +956,10 @@ def ensemble_creator(
     elif combination_mode == EnsembleCombination.select_best.value:
         select_best_post_transforms = Compose(
             [
-                EnsureTyped(keys=["pred0", "pred1", "pred2"]),
-                # Activationsd(
-                #    keys=["pred0", "pred1", "pred2"], sigmoid=True
-                # ),
-                # transform data into discrete before voting
-                AsDiscreted(keys=["pred0", "pred1", "pred2"], argmax=True),
+                EnsureTyped(keys=ensemble_keys),
+                AsDiscreted(keys=ensemble_keys, argmax=True),
                 SelectBestEnsembled(
-                    keys=["pred0", "pred1", "pred2"],
+                    keys=ensemble_keys,
                     output_key="pred",
                     tissue_dict=tissue_dict,
                     candidate_per_tissue_path=candidate_per_tissue_path,
