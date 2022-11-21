@@ -8,7 +8,7 @@ from monai.transforms.post.dictionary import Ensembled
 from monai.transforms.transform import Transform
 from monai.utils import TransformBackends
 
-from ..util.config import load
+from ..utils.config import load
 
 
 class SelectBestEnsemble(Ensemble, Transform):

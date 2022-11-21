@@ -63,9 +63,9 @@ from pytorch_lightning.callbacks import (
 )
 from pytorch_lightning.loggers import TensorBoardLogger
 
+from ..image.labels import load_tissue_list
 from ..seg.enum import EnsembleCombination
 from ..seg.transforms import SelectBestEnsembled
-from ..image.labels import load_tissue_list
 from ..utils import config
 from .dataset import PairedDataSet
 from .evaluation import confusion_matrix
@@ -820,12 +820,6 @@ def ensemble_evaluate(post_transforms, models, device, test_loader):
             roi_size=(96, 96, 96), sw_batch_size=4, overlap=0.5
         ),
         postprocessing=post_transforms,
-        # key_val_metric={
-        #    "test_mean_dice": MeanDice(
-        #        include_background=False,
-        #        output_transform=from_engine(["pred", "label"]),
-        #    )
-        # },
     )
     evaluator.run()
 
