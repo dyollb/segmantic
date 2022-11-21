@@ -6,6 +6,7 @@ import typer
 
 from ..prepro.labels import load_tissue_list
 from ..seg import monai_unet
+from ..seg.enum import EnsembleCombination
 from ..util import config
 from ..util.cli import get_default_args, validate_args
 
@@ -230,6 +231,12 @@ def create_ensemble(
     results_dir: Path = typer.Option(
         None, "--results-dir", "-r", help="output directory"
     ),
+    combination_mode: EnsembleCombination = typer.Option(
+        ..., "--combination-mode", "-cm", help="which mode to use for the combination"
+    ),
+    candidate_per_tissue_path: Path = typer.Option(
+        None, "--candidate-yaml", "-cy", help="yaml with best model for tissues"
+    ),
     spacing: List[int] = typer.Option(
         [], "--spacing", help="if specified, the image is first resampled"
     ),
@@ -254,6 +261,8 @@ def create_ensemble(
         test_labels=_get_nifti_files(labels_dir) if labels_dir else [],
         tissue_dict=load_tissue_list(tissue_list),
         output_dir=results_dir,
+        combination_mode=combination_mode,
+        candidate_per_tissue_path=candidate_per_tissue_path,
         spacing=spacing,
         gpu_ids=gpu_ids,
     )

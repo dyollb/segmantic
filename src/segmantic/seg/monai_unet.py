@@ -64,6 +64,7 @@ from pytorch_lightning.callbacks import (
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from ..prepro.labels import load_tissue_list
+from ..seg.enum import EnsembleCombination
 from ..seg.transforms import SelectBestEnsembled
 from ..util import config
 from .dataset import PairedDataSet
@@ -838,13 +839,21 @@ def ensemble_creator(
     output_dir: Path = None,
     tissue_dict: Dict[str, int] = None,
     spacing: Sequence[float] = [],
-    combination_mode: str = "SelectBest",
+    combination_mode: EnsembleCombination = EnsembleCombination.select_best.value,
+    candidate_per_tissue_path: Optional[Path] = None,
     gpu_ids: List[int] = [],
 ):
+    if combination_mode == EnsembleCombination.select_best.value:
+        if candidate_per_tissue_path is None:
+            raise ValueError(
+                "When using the 'select_best'-mode, candidate_per_tissue_path needs to be specified."
+            )
+        candidate_per_tissue_path = Path(candidate_per_tissue_path)
+
     device = make_device(gpu_ids)
 
     models = [Net.load_from_checkpoint(str(ckpt_path)) for ckpt_path in model_files]
-
+    num_classes = models[0].num_classes
     print(tissue_dict)
 
     if test_labels:
@@ -891,7 +900,7 @@ def ensemble_creator(
                 writer="ITKWriter",
             )
         ]
-    if combination_mode == "Mean":
+    if combination_mode == EnsembleCombination.mean.value:
         mean_post_transforms = Compose(
             [
                 EnsureTyped(keys=["pred0", "pred1", "pred2"]),
@@ -901,31 +910,46 @@ def ensemble_creator(
                     # in this particular example, we use validation metrics as weights
                     weights=[0.95, 0.94, 0.95],
                 ),
-                # Activationsd(keys="pred", sigmoid=True),
-                AsDiscreted(keys="pred", threshold=0.5),
+                AsDiscreted(keys="pred", argmax=True),
+                Invertd(
+                    keys="pred",
+                    transform=pre_transforms,  # type: ignore [arg-type]
+                    orig_keys="image",
+                    nearest_interp=False,
+                    to_tensor=True,
+                ),
             ]
             + save_transforms
         )
         ensemble_evaluate(
             mean_post_transforms, models, device=device, test_loader=test_loader
         )
-    elif combination_mode == "Vote":
+
+    elif combination_mode == EnsembleCombination.vote.value:
         vote_post_transforms = Compose(
             [
                 EnsureTyped(keys=["pred0", "pred1", "pred2"]),
-                # Activationsd(
-                #    keys=["pred0", "pred1", "pred2"], sigmoid=True
-                # ),
-                # transform data into discrete before voting
-                AsDiscreted(keys=["pred0", "pred1", "pred2"], threshold=0.5),
-                VoteEnsembled(keys=["pred0", "pred1", "pred2"], output_key="pred"),
+                AsDiscreted(keys=["pred0", "pred1", "pred2"], argmax=True),
+                VoteEnsembled(
+                    keys=["pred0", "pred1", "pred2"],
+                    output_key="pred",
+                    num_classes=num_classes,
+                ),
+                Invertd(
+                    keys="pred",
+                    transform=pre_transforms,  # type: ignore [arg-type]
+                    orig_keys="image",
+                    nearest_interp=False,
+                    to_tensor=True,
+                ),
             ]
             + save_transforms
         )
         ensemble_evaluate(
             vote_post_transforms, models, device=device, test_loader=test_loader
         )
-    elif combination_mode == "SelectBest":
+
+    elif combination_mode == EnsembleCombination.select_best.value:
         select_best_post_transforms = Compose(
             [
                 EnsureTyped(keys=["pred0", "pred1", "pred2"]),
@@ -933,14 +957,12 @@ def ensemble_creator(
                 #    keys=["pred0", "pred1", "pred2"], sigmoid=True
                 # ),
                 # transform data into discrete before voting
-                # AsDiscreted(keys=["pred0", "pred1", "pred2"], threshold=0.5),
+                AsDiscreted(keys=["pred0", "pred1", "pred2"], argmax=True),
                 SelectBestEnsembled(
                     keys=["pred0", "pred1", "pred2"],
                     output_key="pred",
                     tissue_dict=tissue_dict,
-                    candidate_per_tissue_path=Path(
-                        "D:/test_data/T1T2/best_net_for_tissue.yaml"
-                    ),
+                    candidate_per_tissue_path=candidate_per_tissue_path,
                 ),
                 Invertd(
                     keys="pred",
