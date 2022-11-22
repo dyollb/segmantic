@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Dict, Optional, Sequence, Union
 
 import torch
@@ -7,8 +6,6 @@ from monai.transforms.post.array import Ensemble
 from monai.transforms.post.dictionary import Ensembled
 from monai.transforms.transform import Transform
 from monai.utils import TransformBackends
-
-from ..utils.config import load
 
 
 class SelectBestEnsemble(Ensemble, Transform):
@@ -33,34 +30,25 @@ class SelectBestEnsemble(Ensemble, Transform):
 
     backend = [TransformBackends.TORCH]
 
-    def __init__(
-        self,
-        candidate_per_tissue_path: Path,
-        tissue_dict: Dict[str, int],
-    ) -> None:
-
-        self.tissue_dict = tissue_dict
-        self.best_candidate_for_tissue = load(config_file=candidate_per_tissue_path)
+    def __init__(self, label_model_dict: Dict[int, int]) -> None:
+        self.label_model_dict = label_model_dict
 
     def __call__(
         self, img: Union[Sequence[NdarrayOrTensor], NdarrayOrTensor]
     ) -> NdarrayOrTensor:
-        img_ = self.get_stacked_torch(img)
 
+        img_ = self.get_stacked_torch(img)
         final_img = torch.empty(img_.size()[1:])
+
         if img_.size()[1] > 1:
-            for tissue_name, tissue_lbl in self.tissue_dict.items():
-                best_idx = self.best_candidate_for_tissue[tissue_name]
-                final_img[tissue_lbl, :, :, :] = img_[best_idx, tissue_lbl, :, :, :]
+            for tissue_id, model_id in self.label_model_dict.items():
+                final_img[tissue_id, :, :, :] = img_[model_id, tissue_id, :, :, :]
 
             out_pt = torch.argmax(final_img, dim=0, keepdim=True)
         else:
-            for tissue_name, model_nr in self.best_candidate_for_tissue.items():
-                print(tissue_name, model_nr)
-                tissue_lbl = self.tissue_dict[tissue_name]
-
-                temp_best_tissue = img_[model_nr, :, :, :, :]
-                final_img[temp_best_tissue == tissue_lbl] = tissue_lbl
+            for tissue_id, model_id in self.label_model_dict.items():
+                temp_best_tissue = img_[model_id, :, :, :, :]
+                final_img[temp_best_tissue == tissue_id] = tissue_id
 
             out_pt = final_img
 
@@ -76,8 +64,7 @@ class SelectBestEnsembled(Ensembled):
 
     def __init__(
         self,
-        candidate_per_tissue_path: Path,
-        tissue_dict: Dict[str, int],
+        label_model_dict: Dict[int, int],
         keys: KeysCollection,
         output_key: Optional[str] = None,
     ) -> None:
@@ -90,7 +77,6 @@ class SelectBestEnsembled(Ensembled):
 
         """
         ensemble = SelectBestEnsemble(
-            candidate_per_tissue_path=candidate_per_tissue_path,
-            tissue_dict=tissue_dict,
+            label_model_dict=label_model_dict,
         )
         super().__init__(keys, ensemble, output_key)
