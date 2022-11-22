@@ -831,7 +831,7 @@ def ensemble_creator(
     output_dir: Path = None,
     tissue_dict: Dict[str, int] = None,
     spacing: Sequence[float] = [],
-    combination_mode: EnsembleCombination = EnsembleCombination.select_best.value,
+    combination_mode: EnsembleCombination = EnsembleCombination.select_best,
     candidate_per_tissue_path: Optional[Path] = None,
     gpu_ids: List[int] = [],
 ):
@@ -844,7 +844,9 @@ def ensemble_creator(
 
     device = make_device(gpu_ids)
 
-    models = [Net.load_from_checkpoint(str(ckpt_path)) for ckpt_path in model_files]
+    models: List[Net] = [
+        Net.load_from_checkpoint(str(ckpt_path)) for ckpt_path in model_files
+    ]
     num_classes = models[0].num_classes
 
     ensemble_keys = [f"pred{x}" for x in range(len(models))]
@@ -909,7 +911,7 @@ def ensemble_creator(
                 AsDiscreted(keys="pred", argmax=True),
                 Invertd(
                     keys="pred",
-                    transform=pre_transforms,  # type: ignore [arg-type]
+                    transform=pre_transforms,
                     orig_keys="image",
                     nearest_interp=False,
                     to_tensor=True,
@@ -933,7 +935,7 @@ def ensemble_creator(
                 ),
                 Invertd(
                     keys="pred",
-                    transform=pre_transforms,  # type: ignore [arg-type]
+                    transform=pre_transforms,
                     orig_keys="image",
                     nearest_interp=False,
                     to_tensor=True,
@@ -946,6 +948,11 @@ def ensemble_creator(
         )
 
     elif combination_mode == EnsembleCombination.select_best.value:
+        if candidate_per_tissue_path is None:
+            raise RuntimeError("'select_best' mode requires a selection config file")
+        if tissue_dict is None:
+            raise RuntimeError("'select_best' mode requires a tissue list")
+
         select_best_post_transforms = Compose(
             [
                 EnsureTyped(keys=ensemble_keys),
@@ -958,7 +965,7 @@ def ensemble_creator(
                 ),
                 Invertd(
                     keys="pred",
-                    transform=pre_transforms,  # type: ignore [arg-type]
+                    transform=pre_transforms,
                     orig_keys="image",
                     nearest_interp=False,
                     to_tensor=True,

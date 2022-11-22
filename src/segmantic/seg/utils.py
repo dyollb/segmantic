@@ -1,5 +1,6 @@
-import torch
 from typing import List
+
+import torch
 
 
 def make_device(gpu_ids: List[int]) -> torch.device:
@@ -10,4 +11,4 @@ def make_device(gpu_ids: List[int]) -> torch.device:
     if not gpu_ids or gpu_ids[0] < 0:
         return torch.device("cpu")
     # use gpu
-    return torch.device("cuda:{}".format(gpu_ids[0]))
+    return torch.device(f"cuda:{gpu_ids[0]}")

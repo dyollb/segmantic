@@ -10,7 +10,6 @@ from ..seg.enum import EnsembleCombination
 from ..utils import config
 from ..utils.cli import get_default_args, validate_args
 
-
 app = typer.Typer()
 
 
@@ -247,11 +246,11 @@ def create_ensemble(
     ),
     gpu_ids: List[int] = [0],
 ) -> None:
-    """Create Ensemble model
+    """Ensemble-based prediction
 
     Example invocation:
 
-        -i ./dataset/images -m model.ckpt --results-dir ./results --tissue-list ./dataset/labels.txt
+        -i ./dataset/images -m ./training_01 -cm vote --results-dir ./results --tissue-list ./dataset/labels.txt
     """
 
     def _get_nifti_files(dir: Path) -> List[Path]:

@@ -39,6 +39,7 @@ repos:
     rev: v3.2.0
     hooks:
       - id: pyupgrade
+        name: upgrade code
         args: ["--py37-plus"]
 
   - repo: https://github.com/executablebooks/mdformat
@@ -57,12 +58,6 @@ repos:
       - id: flake8
         name: check PEP8
         args: ["--ignore=E501,W503,E203"]
-
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v2.34.0
-    hooks:
-      - id: pyupgrade
-        name: upgrade code
 
   - repo: https://github.com/hadialqattan/pycln
     rev: v1.2.5
