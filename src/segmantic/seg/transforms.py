@@ -10,21 +10,21 @@ from monai.utils import TransformBackends
 
 class SelectBestEnsemble(Ensemble, Transform):
     """
-    Execute vote ensemble on the input data.
+    Execute select best ensemble on the input data.
     The input data can be a list or tuple of PyTorch Tensor with shape: [C[, H, W, D]],
     Or a single PyTorch Tensor with shape: [E[, C, H, W, D]], the `E` dimension represents
     the output data from different models.
     Typically, the input data is model output of segmentation task or classification task.
 
     Note:
-        This vote transform expects the input data is discrete values. It can be multiple channels
-        data in One-Hot format or single channel data. It will vote to select the most common data
-        between items.
+        This select best transform expects the input data is discrete single channel values.
+        It selects the tissue of the model which performed best in a generalization analysis.
+        The mapping is saved in the label_model_dict.
         The output data has the same shape as every item of the input data.
 
     Args:
-        num_classes: if the input is single channel data instead of One-Hot, we can't get class number
-            from channel, need to explicitly specify the number of classes to vote.
+        label_model_dict: dictionary containing the best models index for each tissue and
+        the tissue labels.
 
     """
 
@@ -41,11 +41,13 @@ class SelectBestEnsemble(Ensemble, Transform):
         final_img = torch.empty(img_.size()[1:])
 
         if img_.size()[1] > 1:
+            "if multi-channel images are passed. This is not well tested"
             for tissue_id, model_id in self.label_model_dict.items():
                 final_img[tissue_id, :, :, :] = img_[model_id, tissue_id, :, :, :]
 
             out_pt = torch.argmax(final_img, dim=0, keepdim=True)
         else:
+            "combining the tissues from the best performing models"
             for tissue_id, model_id in self.label_model_dict.items():
                 temp_best_tissue = img_[model_id, :, :, :, :]
                 final_img[temp_best_tissue == tissue_id] = tissue_id
@@ -57,7 +59,7 @@ class SelectBestEnsemble(Ensemble, Transform):
 
 class SelectBestEnsembled(Ensembled):
     """
-    Dictionary-based wrapper of :py:class:`monai.transforms.VoteEnsemble`.
+    Dictionary-based wrapper of :py:class:`monai.transforms.SelectBestEnsemble`.
     """
 
     backend = SelectBestEnsemble.backend
