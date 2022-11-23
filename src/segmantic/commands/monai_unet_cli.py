@@ -6,6 +6,7 @@ import typer
 
 from ..image.labels import load_tissue_list
 from ..seg import monai_unet
+from ..seg.enum import EnsembleCombination
 from ..utils import config
 from ..utils.cli import get_default_args, validate_args
 
@@ -209,6 +210,63 @@ def predict(
         test_labels=_get_files(labels_dir, labels_glob) if labels_dir else [],
         tissue_dict=load_tissue_list(tissue_list),
         output_dir=results_dir,
+        spacing=spacing,
+        gpu_ids=gpu_ids,
+    )
+
+
+@app.command()
+def create_ensemble(
+    image_dir: Path = typer.Option(
+        ..., "--image-dir", "-i", help="directory containing images"
+    ),
+    labels_dir: Path = typer.Option(
+        None,
+        "--labels-dir",
+        "-l",
+        help="directory containing labelfields",
+    ),
+    models_dir: Path = typer.Option(
+        ..., "--models-dir", "-m", help="saved model checkpoints"
+    ),
+    tissue_list: Path = typer.Option(
+        ..., "--tissue-list", "-t", help="label descriptors in iSEG format"
+    ),
+    results_dir: Path = typer.Option(
+        None, "--results-dir", "-r", help="output directory"
+    ),
+    combination_mode: EnsembleCombination = typer.Option(
+        ..., "--combination-mode", "-cm", help="which mode to use for the combination"
+    ),
+    candidate_per_tissue_path: Path = typer.Option(
+        None, "--candidate-yaml", "-cy", help="yaml with best model for tissues"
+    ),
+    spacing: List[int] = typer.Option(
+        [], "--spacing", help="if specified, the image is first resampled"
+    ),
+    gpu_ids: List[int] = [0],
+) -> None:
+    """Ensemble-based prediction
+
+    Example invocation:
+
+        -i ./dataset/images -m ./training_01 -cm vote --results-dir ./results --tissue-list ./dataset/labels.txt
+    """
+
+    def _get_nifti_files(dir: Path) -> List[Path]:
+        return sorted(f for f in dir.glob("*.nii.gz"))
+
+    def _get_ckpt_files(dir: Path) -> List[Path]:
+        return sorted(f for f in dir.glob("*.ckpt"))
+
+    monai_unet.ensemble_creator(
+        model_files=_get_ckpt_files(models_dir),
+        test_images=_get_nifti_files(image_dir),
+        test_labels=_get_nifti_files(labels_dir) if labels_dir else [],
+        tissue_dict=load_tissue_list(tissue_list),
+        output_dir=results_dir,
+        combination_mode=combination_mode,
+        candidate_per_tissue_path=candidate_per_tissue_path,
         spacing=spacing,
         gpu_ids=gpu_ids,
     )

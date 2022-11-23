@@ -19,6 +19,9 @@ from monai.data import (
     decollate_batch,
     list_data_collate,
 )
+from monai.engines import EnsembleEvaluator
+
+# from monai.handlers import MeanDice, from_engine
 from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
 from monai.metrics import ConfusionMatrixMetric, CumulativeAverage, DiceMetric
@@ -35,6 +38,7 @@ from monai.transforms import (
     EnsureTyped,
     Invertd,
     LoadImaged,
+    MeanEnsembled,
     NormalizeIntensityd,
     Orientationd,
     RandAdjustContrastd,
@@ -47,6 +51,7 @@ from monai.transforms import (
     RandRotated,
     RandZoomd,
     SaveImaged,
+    VoteEnsembled,
 )
 from monai.transforms.spatial.dictionary import Spacingd
 from monai.transforms.transform import MapTransform, Transform
@@ -59,6 +64,8 @@ from pytorch_lightning.callbacks import (
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from ..image.labels import load_tissue_list
+from ..seg.enum import EnsembleCombination
+from ..seg.transforms import SelectBestEnsembled
 from ..utils import config
 from .dataset import PairedDataSet
 from .evaluation import confusion_matrix
@@ -801,3 +808,175 @@ def cross_validate(
                             spacing=[1, 1, 1],
                             gpu_ids=gpu_ids,
                         )
+
+
+def ensemble_evaluate(post_transforms, models, device, test_loader):
+    evaluator = EnsembleEvaluator(
+        device=device,
+        val_data_loader=test_loader,
+        pred_keys=["pred0", "pred1", "pred2"],
+        networks=models,
+        inferer=SlidingWindowInferer(
+            roi_size=(96, 96, 96), sw_batch_size=4, overlap=0.5
+        ),
+        postprocessing=post_transforms,
+    )
+    evaluator.run()
+
+
+def ensemble_creator(
+    model_files: List[Path],
+    test_images: List[Path],
+    test_labels: Optional[List[Path]] = None,
+    output_dir: Path = None,
+    tissue_dict: Dict[str, int] = None,
+    spacing: Sequence[float] = [],
+    combination_mode: EnsembleCombination = EnsembleCombination.select_best,
+    candidate_per_tissue_path: Optional[Path] = None,
+    gpu_ids: List[int] = [],
+):
+    if combination_mode == EnsembleCombination.select_best.value:
+        if candidate_per_tissue_path is None:
+            raise ValueError(
+                "When using the 'select_best'-mode, candidate_per_tissue_path needs to be specified."
+            )
+        candidate_per_tissue_path = Path(candidate_per_tissue_path)
+
+    device = make_device(gpu_ids)
+
+    models: List[Net] = [
+        Net.load_from_checkpoint(str(ckpt_path)) for ckpt_path in model_files
+    ]
+    num_classes = models[0].num_classes
+
+    ensemble_keys = [f"pred{x}" for x in range(len(models))]
+
+    if test_labels:
+        assert len(test_images) == len(test_labels)
+        test_files = [
+            {"image": i, "label": l} for i, l in zip(test_images, test_labels)
+        ]
+    else:
+        test_files = [{"image": i} for i in test_images]
+
+    pre_transforms = Compose(
+        [
+            models[0].default_preprocessing(
+                keys=["image", "label"] if test_labels else ["image"],
+                spacing=spacing,
+            ),
+        ]
+    )
+
+    # data loader
+    test_loader = DataLoader(
+        Dataset(
+            data=test_files,
+            transform=pre_transforms,
+        ),
+        batch_size=1,
+        num_workers=0,
+    )
+
+    # save predicted labels
+    save_transforms: List[MapTransform] = []
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+        save_transforms = [
+            SaveImaged(
+                keys="pred",
+                output_dir=output_dir,
+                output_postfix="seg",
+                resample=False,
+                separate_folder=False,
+                print_log=False,
+                writer="ITKWriter",
+            )
+        ]
+
+    if combination_mode == EnsembleCombination.mean.value:
+        mean_post_transforms = Compose(
+            [
+                EnsureTyped(keys=ensemble_keys),
+                MeanEnsembled(
+                    keys=ensemble_keys,
+                    output_key="pred",
+                    # in this particular example, we use validation metrics as weights
+                    weights=[
+                        float(ckpt_path.stem.split("-")[-1].split("=")[1])
+                        for ckpt_path in model_files
+                    ],
+                ),
+                AsDiscreted(keys="pred", argmax=True),
+                Invertd(
+                    keys="pred",
+                    transform=pre_transforms,
+                    orig_keys="image",
+                    nearest_interp=False,
+                    to_tensor=True,
+                ),
+            ]
+            + save_transforms
+        )
+        ensemble_evaluate(
+            mean_post_transforms, models, device=device, test_loader=test_loader
+        )
+
+    elif combination_mode == EnsembleCombination.vote.value:
+        vote_post_transforms = Compose(
+            [
+                EnsureTyped(keys=ensemble_keys),
+                AsDiscreted(keys=ensemble_keys, argmax=True),
+                VoteEnsembled(
+                    keys=ensemble_keys,
+                    output_key="pred",
+                    num_classes=num_classes,
+                ),
+                Invertd(
+                    keys="pred",
+                    transform=pre_transforms,
+                    orig_keys="image",
+                    nearest_interp=False,
+                    to_tensor=True,
+                ),
+            ]
+            + save_transforms
+        )
+        ensemble_evaluate(
+            vote_post_transforms, models, device=device, test_loader=test_loader
+        )
+
+    elif combination_mode == EnsembleCombination.select_best.value:
+        if candidate_per_tissue_path is None:
+            raise RuntimeError("'select_best' mode requires a selection config file")
+        if tissue_dict is None:
+            raise RuntimeError("'select_best' mode requires a tissue list")
+
+        name_model_dict = config.load(config_file=candidate_per_tissue_path)
+        label_model_dict: Dict[int, int] = {
+            lbl: name_model_dict[name] for name, lbl in tissue_dict.items()
+        }
+
+        select_best_post_transforms = Compose(
+            [
+                EnsureTyped(keys=ensemble_keys),
+                AsDiscreted(keys=ensemble_keys, argmax=True),
+                SelectBestEnsembled(
+                    keys=ensemble_keys,
+                    output_key="pred",
+                    label_model_dict=label_model_dict,
+                ),
+                Invertd(
+                    keys="pred",
+                    transform=pre_transforms,
+                    orig_keys="image",
+                    nearest_interp=False,
+                    to_tensor=True,
+                ),
+            ]
+            + save_transforms
+        )
+        ensemble_evaluate(
+            select_best_post_transforms, models, device=device, test_loader=test_loader
+        )
