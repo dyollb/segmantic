@@ -38,24 +38,22 @@ class SelectBestEnsemble(Ensemble, Transform):
     ) -> NdarrayOrTensor:
         img_ = self.get_stacked_torch(img)
 
+        has_ch_dim = False
         if img_.ndimension() > 1 and img_.shape[1] > 1:
-            # if multi-channel (One-Hot) images are passed
+            # convert multi-channel (One-Hot) images to argmax
             img_ = torch.argmax(img_, dim=1, keepdim=True)
             has_ch_dim = True
-        else:
-            # combining the tissues from the best performing models
-            has_ch_dim = False
 
-        final_img = torch.empty(img_.size()[1:])
+        # combining the tissues from the best performing models
+        out_pt = torch.empty(img_.size()[1:])
         for tissue_id, model_id in self.label_model_dict.items():
-            temp_best_tissue = img_[model_id, :, :, :, :]
-            final_img[temp_best_tissue == tissue_id] = tissue_id
+            temp_best_tissue = img_[model_id, ...]
+            out_pt[temp_best_tissue == tissue_id] = tissue_id
 
         if has_ch_dim:
+            # convert back to multi-channel (One-Hot)
             num_classes = max(self.label_model_dict.keys()) + 1
-            out_pt = one_hot(final_img, num_classes, dim=0)
-        else:
-            out_pt = final_img
+            out_pt = one_hot(out_pt, num_classes, dim=0)
 
         return self.post_convert(out_pt, img)
 
