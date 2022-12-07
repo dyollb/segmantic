@@ -8,14 +8,14 @@ import SimpleITK as sitk
 from monai.transforms import AsDiscreted, Compose, EnsureChannelFirstd, LoadImaged
 from numpy.testing import assert_almost_equal
 
-from segmantic.detect.transforms import (
+from segmantic.image.processing import make_image
+from segmantic.transforms.detect import (
     BoundingBoxd,
     EmbedVert,
     ExtractVertPosition,
     LoadVert,
     SaveVert,
 )
-from segmantic.image.processing import make_image
 
 KEY_0 = "point_0"
 KEY_1 = "point_1"

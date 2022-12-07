@@ -1,4 +1,3 @@
-import json
 import os
 import subprocess as sp
 import sys
@@ -65,7 +64,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from ..image.labels import load_tissue_list
 from ..seg.enum import EnsembleCombination
-from ..seg.transforms import SelectBestEnsembled
+from ..transforms.ensemble import SelectBestEnsembled
 from ..utils import config
 from .dataset import PairedDataSet
 from .evaluation import confusion_matrix
@@ -538,19 +537,12 @@ def predict(
     gpu_ids: List[int] = [],
 ) -> None:
     # load trained model
-    model_settings_json = model_file.with_suffix(".json")
-    if model_settings_json.exists():
-        print(f"WARNING: Loading legacy model settings from {model_settings_json}")
-        with model_settings_json.open() as json_file:
-            settings = json.load(json_file)
-        net = cast(Net, Net.load_from_checkpoint(f"{model_file}", **settings))
-    else:
-        net = cast(
-            Net,
-            Net.load_from_checkpoint(
-                f"{model_file}", channels=channels, strides=strides, dropout=dropout
-            ),
-        )
+    net = cast(
+        Net,
+        Net.load_from_checkpoint(
+            f"{model_file}", channels=channels, strides=strides, dropout=dropout
+        ),
+    )
     num_classes = net.num_classes
 
     net.freeze()

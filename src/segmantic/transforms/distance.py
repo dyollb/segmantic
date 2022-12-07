@@ -43,12 +43,14 @@ def get_boundary_distance(
             - ``"euclidean"``, uses Exact Euclidean distance transform.
             - ``"chessboard"``, uses `chessboard` metric in chamfer type of transform.
             - ``"taxicab"``, uses `taxicab` metric in chamfer type of transform.
+        num_classes: number of classes including background (num_classes == max(labels) + 1)
+        spacing: the image spacing
     Note:
-        If labels is all 0, may result in nan/inf distance.
+        If labels is all 0, may result in inf distance. (TODO: `inf` in boundary loss?)
     """
 
     masks: np.ndarray
-    if labels.dtype == bool:
+    if labels.dtype in (bool,):
         masks = np.expand_dims(labels, axis=0)
     else:
         masks = np.empty((num_classes - 1,) + labels.shape)
@@ -58,18 +60,17 @@ def get_boundary_distance(
     result = np.empty_like(masks, dtype=float)
     for i, binary_mask in enumerate(masks):
         if not np.any(binary_mask):
-            dis = np.inf * np.ones(binary_mask.shape, dtype=float)
+            result[i, ...] = np.inf * np.ones(binary_mask.shape, dtype=float)
         else:
             edges = get_mask_edges(binary_mask)
             if distance_metric == "euclidean":
-                dis = distance_transform_edt(~edges, sampling=spacing)
+                result[i, ...] = distance_transform_edt(~edges, sampling=spacing)
             elif distance_metric in {"chessboard", "taxicab"}:
-                dis = distance_transform_cdt(~edges, metric=distance_metric)
+                result[i, ...] = distance_transform_cdt(~edges, metric=distance_metric)
             else:
                 raise ValueError(
                     f"distance_metric {distance_metric} is not implemented."
                 )
-        result[i, ...] = dis
     return result
 
 
@@ -122,65 +123,3 @@ class DistanceTransformd(MapTransform):
         for key, output_key in zip(self.keys, self.output_keys):
             d[output_key] = self.dt(d[key])
         return d
-
-
-def test_DistanceTransform_2d():
-    mask = torch.zeros(8, 9, dtype=torch.bool)
-    mask[2:5, 3:6] = 1
-
-    distance_transform = DistanceTransform()
-    df = distance_transform(mask)
-    assert isinstance(df, torch.Tensor)
-    assert df.shape == (
-        1,
-        8,
-        9,
-    )
-
-
-def test_DistanceTransform_3d():
-    mask = torch.zeros(8, 9, 7, dtype=torch.bool)
-    mask[2:5, 3:6, 3:5] = 1
-
-    distance_transform = DistanceTransform()
-    df = distance_transform(mask)
-    assert isinstance(df, torch.Tensor)
-    assert df.shape == (
-        1,
-        8,
-        9,
-        7,
-    )
-
-
-def test_DistanceTransformd():
-    mask = torch.zeros(8, 9, dtype=torch.bool)
-    mask[2:5, 3:6] = 1
-
-    distance_transform = DistanceTransformd(keys="label", output_keys="dist")
-    df = distance_transform({"label": mask})
-    assert isinstance(df, dict)
-    assert "dist" in df
-    assert isinstance(df["dist"], torch.Tensor)
-
-
-def test_DistanceTransform_MultiClass():
-    mask = np.zeros((6, 7), dtype=int)
-    mask[2:5, 3:6] = 1
-    mask[4, 5] = 2
-
-    spacing = (1.2, 1.7)
-
-    distance_transform = DistanceTransform(num_classes=3, spacing=spacing)
-    df = distance_transform(mask)
-    assert df.shape == (
-        2,
-        6,
-        7,
-    )
-    ref = distance_transform_edt(~(mask == 2), sampling=spacing)
-    np.testing.assert_almost_equal(df[1, ...], ref, decimal=6)
-
-
-if __name__ == "__main__":
-    test_DistanceTransform_MultiClass()
