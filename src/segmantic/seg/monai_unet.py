@@ -750,8 +750,8 @@ def cross_validate(
 
         assert config_file.suffix in [".json", ".yaml"]
         is_json = config_file and config_file.suffix.lower() == ".json"
-        dumps = partial(config.dumps, is_json)
-        loads = partial(config.loads, is_json)
+        dumps = partial(config.dumps, is_json=is_json)
+        loads = partial(config.loads, is_json=is_json)
 
         output_dir_scenario = output_dir / config_file.name
         output_dir_scenario.mkdir(exist_ok=True)
@@ -766,6 +766,8 @@ def cross_validate(
             data: dict = loads(config_file.read_text())
 
             data["dataset"] = str(dataset_path)
+            data.pop("image_dir")
+            data.pop("labels_dir")
             data["output_dir"] = str(current_output)
             current_layers = data["channels"]
             current_strides = data["strides"]
@@ -954,8 +956,9 @@ def ensemble_creator(
             raise RuntimeError("'select_best' mode requires a tissue list")
 
         name_model_dict = config.load(config_file=candidate_per_tissue_path)
+
         label_model_dict: Dict[int, int] = {
-            lbl: name_model_dict[name] for name, lbl in tissue_dict.items()
+            tissue_dict[name]: lbl for name, lbl in name_model_dict.items()
         }
 
         select_best_post_transforms = Compose(
