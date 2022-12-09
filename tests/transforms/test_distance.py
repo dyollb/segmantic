@@ -13,7 +13,7 @@ def test_DistanceTransform_2d():
     df = distance_transform(mask)
     assert isinstance(df, torch.Tensor)
     assert df.shape == (
-        1,
+        2,
         8,
         9,
     )
@@ -27,7 +27,7 @@ def test_DistanceTransform_3d():
     df = distance_transform(mask)
     assert isinstance(df, torch.Tensor)
     assert df.shape == (
-        1,
+        2,
         8,
         9,
         7,
@@ -55,15 +55,11 @@ def test_DistanceTransform_MultiClass():
     distance_transform = DistanceTransform(num_classes=3, spacing=spacing)
     df = distance_transform(mask)
     assert df.shape == (
-        2,
+        3,
         6,
         7,
     )
     ref1 = distance_transform_edt(~(mask == 1), sampling=spacing)
     ref2 = distance_transform_edt(~(mask == 2), sampling=spacing)
-    np.testing.assert_almost_equal(df[0, ...], ref1, decimal=6)
-    np.testing.assert_almost_equal(df[1, ...], ref2, decimal=6)
-
-
-if __name__ == "__main__":
-    test_DistanceTransform_MultiClass()
+    np.testing.assert_almost_equal(df[1, ...], ref1, decimal=6)
+    np.testing.assert_almost_equal(df[2, ...], ref2, decimal=6)

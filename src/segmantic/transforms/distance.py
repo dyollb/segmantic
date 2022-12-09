@@ -51,11 +51,13 @@ def get_boundary_distance(
 
     masks: np.ndarray
     if labels.dtype in (bool,):
-        masks = np.expand_dims(labels, axis=0)
+        masks = np.empty((2,) + labels.shape)
+        masks[0, ...] = ~labels
+        masks[1, ...] = labels
     else:
-        masks = np.empty((num_classes - 1,) + labels.shape)
-        for label_idx in range(1, num_classes):
-            masks[label_idx - 1, ...] = labels == label_idx
+        masks = np.empty((num_classes,) + labels.shape)
+        for label_idx in range(num_classes):
+            masks[label_idx, ...] = labels == label_idx
 
     result = np.empty_like(masks, dtype=float)
     for i, binary_mask in enumerate(masks):
