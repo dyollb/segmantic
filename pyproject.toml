@@ -77,7 +77,7 @@ warn_return_any = true
 strict_equality = true
 no_implicit_optional = false
 exclude = [
-  'some_folder_to_exclude'
+  'build'
 ]
 show_column_numbers = true
 show_error_codes = true

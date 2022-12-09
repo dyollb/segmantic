@@ -6,13 +6,20 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      - name: Setup python 3.9
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.9"
       - name: Check format
         uses: psf/black@stable
         with:
           options: "--check --diff"
           src: "src"
       - name: Pip install test
-        run: pip install -e ".[test]"
+        run: |
+          which python
+          python -m pip install --upgrade pip wheel
+          pip install --user ".[test]"
       - name: Static analysis
         run: mypy .
