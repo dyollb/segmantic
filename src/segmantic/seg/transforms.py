@@ -2,6 +2,7 @@ from typing import Dict, Optional, Sequence, Union
 
 import torch
 from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
+from monai.networks.utils import one_hot
 from monai.transforms.post.array import Ensemble
 from monai.transforms.post.dictionary import Ensembled
 from monai.transforms.transform import Transform
@@ -25,7 +26,6 @@ class SelectBestEnsemble(Ensemble, Transform):
     Args:
         label_model_dict: dictionary containing the best models index for each tissue and
         the tissue labels.
-
     """
 
     backend = [TransformBackends.TORCH]
@@ -36,23 +36,24 @@ class SelectBestEnsemble(Ensemble, Transform):
     def __call__(
         self, img: Union[Sequence[NdarrayOrTensor], NdarrayOrTensor]
     ) -> NdarrayOrTensor:
-
         img_ = self.get_stacked_torch(img)
-        final_img = torch.empty(img_.size()[1:])
 
-        if img_.size()[1] > 1:
-            "if multi-channel images are passed. This is not well tested"
-            for tissue_id, model_id in self.label_model_dict.items():
-                final_img[tissue_id, :, :, :] = img_[model_id, tissue_id, :, :, :]
+        has_ch_dim = False
+        if img_.ndimension() > 1 and img_.shape[1] > 1:
+            # convert multi-channel (One-Hot) images to argmax
+            img_ = torch.argmax(img_, dim=1, keepdim=True)
+            has_ch_dim = True
 
-            out_pt = torch.argmax(final_img, dim=0, keepdim=True)
-        else:
-            "combining the tissues from the best performing models"
-            for tissue_id, model_id in self.label_model_dict.items():
-                temp_best_tissue = img_[model_id, :, :, :, :]
-                final_img[temp_best_tissue == tissue_id] = tissue_id
+        # combining the tissues from the best performing models
+        out_pt = torch.empty(img_.size()[1:])
+        for tissue_id, model_id in self.label_model_dict.items():
+            temp_best_tissue = img_[model_id, ...]
+            out_pt[temp_best_tissue == tissue_id] = tissue_id
 
-            out_pt = final_img
+        if has_ch_dim:
+            # convert back to multi-channel (One-Hot)
+            num_classes = max(self.label_model_dict.keys()) + 1
+            out_pt = one_hot(out_pt, num_classes, dim=0)
 
         return self.post_convert(out_pt, img)
 
