@@ -954,8 +954,9 @@ def ensemble_creator(
             raise RuntimeError("'select_best' mode requires a tissue list")
 
         name_model_dict = config.load(config_file=candidate_per_tissue_path)
+
         label_model_dict: Dict[int, int] = {
-            lbl: name_model_dict[name] for name, lbl in tissue_dict.items()
+            tissue_dict[name]: lbl for name, lbl in name_model_dict.items()
         }
 
         select_best_post_transforms = Compose(
