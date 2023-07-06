@@ -92,3 +92,7 @@ disallow_untyped_defs = true
 [[tool.mypy.overrides]]
 module = "itk.*,PIL,matplotlib.*,torch,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml,scipy.*,adabelief_pytorch,h5py,SimpleITK,vtk.*,sitk_cli"
 ignore_missing_imports = true
+
+[tool.ruff]
+select = ["E", "F"]
+ignore = ["E501"]

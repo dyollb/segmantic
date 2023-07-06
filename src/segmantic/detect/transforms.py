@@ -84,7 +84,6 @@ class SaveVert(MapTransform):
         self._data_index = 0
 
     def __call__(self, data):
-
         err = []
         d = dict(data)
         for key in self.key_iterator(d):
@@ -136,7 +135,6 @@ class EmbedVert(MapTransform):
         self.meta_key_postfix = meta_key_postfix
 
     def __call__(self, data):
-
         d = dict(data)
         ref_meta_key = f"{self.ref_key}_{self.meta_key_postfix}"
         if "affine" in d[ref_meta_key]:
@@ -183,7 +181,6 @@ class ExtractVertPosition(MapTransform):
     def __call__(
         self, data: Mapping[Hashable, np.ndarray]
     ) -> Dict[Hashable, np.ndarray]:
-
         d: Dict = dict(data)
         for key in self.key_iterator(d):
             # locate vertices
@@ -239,7 +236,6 @@ class VertHeatMap(MapTransform):
     def __call__(
         self, data: Mapping[Hashable, np.ndarray]
     ) -> Dict[Hashable, NdarrayOrTensor]:
-
         d: Dict[Hashable, NdarrayOrTensor] = dict(data)
         for k in self.keys:
             i = convert_to_tensor(d[k], dtype=torch.long)

@@ -1,3 +1,3 @@
-mkdocs-material
-mkdocs-jupyter
 ipython_genutils
+mkdocs-jupyter
+mkdocs-material

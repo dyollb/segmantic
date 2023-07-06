@@ -151,7 +151,6 @@ class Net(pl.LightningModule):
         keys: List[str],
         spacing: Sequence[float] = [],
     ) -> Transform:
-
         xforms = [
             LoadImaged(keys=keys, reader="ITKReader"),
             EnsureChannelFirstd(keys=keys),
@@ -412,7 +411,6 @@ def train(
     gpu_ids: List[int] = [0],
     tissue_list: Path = None,
 ) -> pl.LightningModule:
-
     if optimizer is None:
         optimizer = {
             "optimizer": "Adam",
@@ -562,7 +560,7 @@ def predict(
     if test_labels:
         assert len(test_images) == len(test_labels)
         test_files = [
-            {"image": i, "label": l} for i, l in zip(test_images, test_labels)
+            {"image": img, "label": lbl} for img, lbl in zip(test_images, test_labels)
         ]
     else:
         test_files = [{"image": i} for i in test_images]
@@ -643,7 +641,6 @@ def predict(
     all_mean_dice = []
     with torch.no_grad():
         for test_data in test_loader:
-
             val_pred = inferer(test_data["image"].to(device), net)
             assert isinstance(val_pred, torch.Tensor)
 
@@ -747,7 +744,6 @@ def cross_validate(
     )
 
     for config_file in Path(config_files_dir).iterdir():
-
         assert config_file.suffix in [".json", ".yaml"]
         is_json = config_file and config_file.suffix.lower() == ".json"
         dumps = partial(config.dumps, is_json=is_json)
@@ -757,7 +753,6 @@ def cross_validate(
         output_dir_scenario.mkdir(exist_ok=True)
 
         for count, dataset_path in enumerate(all_datafold_paths):
-
             current_output = output_dir_scenario / str(count)
             print(current_output)
 
@@ -856,7 +851,7 @@ def ensemble_creator(
     if test_labels:
         assert len(test_images) == len(test_labels)
         test_files = [
-            {"image": i, "label": l} for i, l in zip(test_images, test_labels)
+            {"image": img, "label": lbl} for img, lbl in zip(test_images, test_labels)
         ]
     else:
         test_files = [{"image": i} for i in test_images]
