@@ -12,7 +12,6 @@ VERT_ID = 2
 def evaluate_segmentations(
     input_dir: Path, reference_dir: Path, output_file: Path, input_glob: str = ".nii.gz"
 ):
-
     header = (
         "name",
         "manufacturer",
@@ -47,7 +46,6 @@ def evaluate_segmentations(
 
         vals: list[float] = []
         for id in (SKULL_ID, VERT_ID):
-
             dice = overlap_measures_filter.GetDiceCoefficient(id)
             false_neg = overlap_measures_filter.GetFalseNegativeError(id)
             false_pos = overlap_measures_filter.GetFalsePositiveError(id)

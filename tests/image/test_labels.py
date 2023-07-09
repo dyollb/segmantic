@@ -28,7 +28,6 @@ def test_tissue_list_io(tmp_path: Path, tissue_map: dict) -> None:
 
 
 def test_build_tissue_map(tissue_map: dict) -> None:
-
     # map "Skin" and "Fat" to "Other_tissue"
     def _map_name(name):
         if name == "Background":
