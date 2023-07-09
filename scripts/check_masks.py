@@ -9,7 +9,7 @@ import typer
 def fix_binary_masks(directory: Path, file_glob: str = "*.nii.gz"):
     logger = logging.getLogger(__file__)
     for file_path in directory.glob(file_glob):
-        img = nib.load(f"{file_path}")
+        img: nib.Nifti1Image = nib.load(f"{file_path}")  # type: ignore [assignment]
         data = img.get_fdata()
         max_value = np.max(data)
         if max_value == 0:
