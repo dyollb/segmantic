@@ -3,7 +3,7 @@ import subprocess as sp
 import sys
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union, cast
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pytorch_lightning as pl
@@ -150,7 +150,6 @@ class Net(pl.LightningModule):
         keys: List[str],
         spacing: Sequence[float] = [],
     ) -> Transform:
-
         xforms = [
             LoadImaged(keys=keys, reader="ITKReader"),
             EnsureChannelFirstd(keys=keys),
@@ -411,7 +410,6 @@ def train(
     gpu_ids: List[int] = [0],
     tissue_list: Path = None,
 ) -> pl.LightningModule:
-
     if optimizer is None:
         optimizer = {
             "optimizer": "Adam",
@@ -432,7 +430,7 @@ def train(
 
     # initialise the LightningModule
     if checkpoint_file and Path(checkpoint_file).exists():
-        net = cast(Net, Net.load_from_checkpoint(f"{checkpoint_file}"))
+        net = Net.load_from_checkpoint(f"{checkpoint_file}")
     else:
         if num_classes > 0 and tissue_list:
             raise ValueError(
@@ -501,10 +499,14 @@ def train(
 
     print_config()
 
+    if not torch.cuda.is_available():
+        gpu_ids = [-1]
+
     # initialise Lightning's trainer.
     # ToDo: Add self.batch_size to init and actually make the auto_scale_batch_size work.
     trainer = pl.Trainer(
-        gpus=gpu_ids,
+        accelerator="cpu" if not gpu_ids or gpu_ids[0] < 0 else "gpu",
+        devices=len(gpu_ids),
         # auto_scale_batch_size=True,
         precision=16 if mixed_precision else 32,
         max_epochs=max_epochs,
@@ -537,11 +539,8 @@ def predict(
     gpu_ids: List[int] = [],
 ) -> None:
     # load trained model
-    net = cast(
-        Net,
-        Net.load_from_checkpoint(
-            f"{model_file}", channels=channels, strides=strides, dropout=dropout
-        ),
+    net = Net.load_from_checkpoint(
+        f"{model_file}", channels=channels, strides=strides, dropout=dropout
     )
     num_classes = net.num_classes
 
@@ -554,7 +553,7 @@ def predict(
     if test_labels:
         assert len(test_images) == len(test_labels)
         test_files = [
-            {"image": i, "label": l} for i, l in zip(test_images, test_labels)
+            {"image": img, "label": lbl} for img, lbl in zip(test_images, test_labels)
         ]
     else:
         test_files = [{"image": i} for i in test_images]
@@ -635,7 +634,6 @@ def predict(
     all_mean_dice = []
     with torch.no_grad():
         for test_data in test_loader:
-
             val_pred = inferer(test_data["image"].to(device), net)
             assert isinstance(val_pred, torch.Tensor)
 
@@ -647,7 +645,7 @@ def predict(
                 val_pred = val_pred.argmax(dim=1, keepdim=True)
                 val_labels = test_data["label"].to(device).long()
 
-                dice = dice_metric(
+                dice: torch.Tensor = dice_metric(  # type: ignore [assignment]
                     y_pred=to_one_hot(val_pred), y=to_one_hot(val_labels)
                 )
                 mean_class_dice.append(dice)
@@ -658,7 +656,7 @@ def predict(
                 print("Class Dice:")
                 print_table(tissue_names, np.squeeze(dice_np))
 
-                all_mean_dice.append(dice_metric.aggregate().item())
+                all_mean_dice.append(dice_metric.aggregate().item())  # type: ignore
 
                 filename_or_obj = test_data["image_meta_dict"]["filename_or_obj"]
                 if filename_or_obj and isinstance(filename_or_obj, list):
@@ -689,15 +687,15 @@ def predict(
 
         if test_labels:
             print("*" * 80)
-            print("Total Mean Dice: ", dice_metric.aggregate().item())
+            print("Total Mean Dice: ", dice_metric.aggregate().item())  # type: ignore
             print("Total Class Dice:")
             print_table(
-                tissue_names, np.squeeze(mean_class_dice.aggregate().cpu().numpy())
+                tissue_names, np.squeeze(mean_class_dice.aggregate().cpu().numpy())  # type: ignore
             )
             print("Total Conf. Matrix Metrics:")
             print_table(
                 confusion_metrics,
-                (np.squeeze(x.cpu().numpy()) for x in conf_matrix.aggregate()),
+                (np.squeeze(x.cpu().numpy()) for x in conf_matrix.aggregate()),  # type: ignore
             )
 
 
@@ -739,7 +737,6 @@ def cross_validate(
     )
 
     for config_file in Path(config_files_dir).iterdir():
-
         assert config_file.suffix in [".json", ".yaml"]
         is_json = config_file and config_file.suffix.lower() == ".json"
         dumps = partial(config.dumps, is_json=is_json)
@@ -749,7 +746,6 @@ def cross_validate(
         output_dir_scenario.mkdir(exist_ok=True)
 
         for count, dataset_path in enumerate(all_datafold_paths):
-
             current_output = output_dir_scenario / str(count)
             print(current_output)
 
@@ -848,7 +844,7 @@ def ensemble_creator(
     if test_labels:
         assert len(test_images) == len(test_labels)
         test_files = [
-            {"image": i, "label": l} for i, l in zip(test_images, test_labels)
+            {"image": img, "label": lbl} for img, lbl in zip(test_images, test_labels)
         ]
     else:
         test_files = [{"image": i} for i in test_images]

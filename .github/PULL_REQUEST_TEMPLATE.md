@@ -18,7 +18,6 @@ or from https://gitmoji.dev/
 
 <!-- Explain REVIEWERS what is this PR about -->
 
-
 ## Related issue/s
 
 <!-- Enumerate REVIEWERS other issues
@@ -29,11 +28,9 @@ e.g.
 
 -->
 
-
 ## How to test
 
 <!-- Give REVIEWERS some hits or code snippets on how could this be tested -->
-
 
 ## Checklist
 

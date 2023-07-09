@@ -37,3 +37,16 @@ def test_resample(labelfield: sitk.Image) -> None:
 
     # expecting double the resolution
     assert list(res.GetSize()) == [2 * s for s in labelfield.GetSize()]
+
+
+def test_resample_to_ref(labelfield: sitk.Image) -> None:
+    #
+    spacing = [s / 2.0 for s in labelfield.GetSpacing()]
+    ref = sitk.Image(12, 10, 7, sitk.sitkUInt16)
+    ref.SetSpacing(spacing)
+    ref.SetOrigin([1.3, -2.1, 0.75])
+
+    res = processing.resample_to_ref(labelfield, ref, nearest=True)
+    # check resolution
+    assert list(res.GetSize()) == list(ref.GetSize())
+    assert list(res.GetSpacing()) == list(ref.GetSpacing())

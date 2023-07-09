@@ -4,7 +4,6 @@ from segmantic.image.utils import array_view_reverse_ordering
 
 
 def test_array_view_reverse_ordering():
-
     rng = np.random.default_rng()
     im3d = rng.random((12, 13, 14))
     im3d_f = array_view_reverse_ordering(im3d)

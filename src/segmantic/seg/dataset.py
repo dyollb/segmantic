@@ -72,7 +72,6 @@ class PairedDataSet:
         random_seed: int = None,
         max_files: int = 0,
     ):
-
         data_dicts = self.create_data_dict(
             image_dir, image_glob, labels_dir, labels_glob
         )
@@ -144,7 +143,6 @@ class PairedDataSet:
         labels_dir: Path = Path(),
         labels_glob: str = "*.nii.gz",
     ) -> List[Dict[str, Path]]:
-
         assert image_dir.is_dir() and labels_dir.is_dir()
 
         if Path(image_glob).is_absolute():

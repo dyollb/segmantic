@@ -8,7 +8,6 @@ from scipy.interpolate import interp1d
 
 
 class NyulNormalize(Transform):
-
     backend = [TransformBackends.TORCH, TransformBackends.NUMPY]
     quantiles: NdarrayOrTensor
     standard_scale: NdarrayOrTensor
@@ -20,7 +19,6 @@ class NyulNormalize(Transform):
         nonzero: bool = False,
         channel_wise: bool = False,
     ) -> None:
-
         indices = np.argsort(quantiles, kind="stable")
         self.quantiles = quantiles[indices]
         self.standard_scale = standard_scale[indices]
@@ -45,7 +43,6 @@ class NyulNormalize(Transform):
         return f
 
     def _normalize(self, img: NdarrayOrTensor) -> NdarrayOrTensor:
-
         # TODO: allow user-specified mask `select_fn`
         if self.nonzero:
             mask = img != 0
