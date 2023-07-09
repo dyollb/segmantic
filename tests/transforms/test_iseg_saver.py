@@ -5,7 +5,7 @@ import pytest
 import SimpleITK as sitk
 from monai.transforms import LoadImaged
 
-from segmantic.data.transforms import LabelInfo, iSegSaver
+from segmantic.transforms.io import LabelInfo, iSegSaver
 
 
 @pytest.fixture

@@ -2,7 +2,7 @@ import torch
 from monai.networks import one_hot
 from torch.testing import assert_close
 
-from segmantic.seg.transforms import SelectBestEnsembled
+from segmantic.transforms.ensemble import SelectBestEnsembled
 
 
 def test_SelectBestEnsembled():

@@ -1,6 +1,7 @@
 import json
 from inspect import signature
 from pathlib import Path
+from typing import Optional
 
 import pytest
 import yaml
@@ -12,7 +13,7 @@ def function1(path: Path, arg_int: int, arg_float: float = -1.5):
     pass
 
 
-def function2(arg_int: int, path: Path = None):
+def function2(arg_int: int, path: Optional[Path] = None):
     pass
 
 
