@@ -50,7 +50,7 @@ repos:
     hooks:
       - id: pyupgrade
         name: upgrade code
-        args: ["--py37-plus"]
+        args: ["--py38-plus"]
 
   - repo: https://github.com/executablebooks/mdformat
     rev: 0.7.16
