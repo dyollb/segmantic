@@ -6,16 +6,10 @@ from functools import partial
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-import lightning.pytorch as pl
 import numpy as np
+import pytorch_lightning as pl
 import torch
 from adabelief_pytorch import AdaBelief
-from lightning.pytorch.callbacks import (
-    EarlyStopping,
-    LearningRateMonitor,
-    ModelCheckpoint,
-)
-from lightning.pytorch.loggers import TensorBoardLogger
 from monai.bundle import ConfigParser
 from monai.config import print_config
 from monai.data import (
@@ -62,6 +56,12 @@ from monai.transforms import (
 from monai.transforms.spatial.dictionary import Spacingd
 from monai.transforms.transform import MapTransform, Transform
 from monai.utils import set_determinism
+from pytorch_lightning.callbacks import (
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
+)
+from pytorch_lightning.loggers import TensorBoardLogger
 
 from ..image.labels import load_decathlon_tissuelist, load_tissue_list
 from ..seg.enum import EnsembleCombination

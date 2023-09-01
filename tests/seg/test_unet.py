@@ -84,7 +84,7 @@ def test_load_postprocessing():
 
 
 def test_load_trainer():
-    import lightning.pytorch as pl
+    import pytorch_lightning as pl
 
     data_dir = Path(__file__).parent.parent.resolve() / "testing_data" / "config.json"
     options = json.loads(data_dir.read_text())

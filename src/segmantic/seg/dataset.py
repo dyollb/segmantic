@@ -175,14 +175,14 @@ class PairedDataSet:
         all_dataset_paths: List[Path] = []
 
         for count, (train_idx, val_idx) in enumerate(kf.split(image_idx, image_idx)):
-            temp_dataset = PairedDataSet()
-            temp_dataset._train_files = [data_dicts[i] for i in train_idx]
-            temp_dataset._val_files = [data_dicts[i] for i in val_idx]
-            temp_dataset._test_files = test_data_dicts
+            dataset = PairedDataSet()
+            dataset._train_files = [data_dicts[i] for i in train_idx]
+            dataset._val_files = [data_dicts[i] for i in val_idx]
+            dataset._test_files = test_data_dicts
 
-            temp_dataset_path = output_dir / f"fold_{count}.json"
-            temp_dataset_path.write_text(temp_dataset.dump_dataset())
-            all_dataset_paths.append(temp_dataset_path)
+            dataset_path = output_dir / f"fold_{count}.json"
+            dataset_path.write_text(dataset.dump_dataset())
+            all_dataset_paths.append(dataset_path)
 
         return all_dataset_paths
 
