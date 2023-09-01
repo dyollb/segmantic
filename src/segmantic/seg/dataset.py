@@ -39,7 +39,7 @@ def find_matching_files(input_globs: List[Path], verbose: bool = True):
 
 def create_data_dict(
     list_to_convert: List[Dict[str, str]], p: Path, data_dicts: List[Dict[str, Path]]
-):
+) -> List[Dict[str, Path]]:
     for element in list_to_convert:
         # special case: absolute paths
         if Path(element["image"]).is_absolute():
@@ -188,7 +188,7 @@ class PairedDataSet:
 
     @staticmethod
     def load_from_json(
-        file_path: Union[Path, List[Path]],
+        datalist_paths: Union[Path, List[Path]],
     ):
         """Loads one or more datasets from json descriptor files and returns a single combined dataset
 
@@ -201,29 +201,29 @@ class PairedDataSet:
         }
         """
 
-        if isinstance(file_path, (Path, str)):
-            file_path = [file_path]
+        if isinstance(datalist_paths, (Path, str)):
+            datalist_paths = [datalist_paths]
 
         data_dicts_train: List[Dict[str, Path]] = []
         data_dicts_val: List[Dict[str, Path]] = []
         data_dicts_test: List[Dict[str, Path]] = []
 
-        for p in [Path(f) for f in file_path]:
-            ds = json.loads(p.read_text())
+        for json_path in [Path(f) for f in datalist_paths]:
+            ds = json.loads(json_path.read_text())
             training = ds["training"]
             validation = ds["validation"]
             test = ds["test"] if "test" in ds else []
 
             data_dicts_train = create_data_dict(
-                list_to_convert=training, p=p, data_dicts=data_dicts_train
+                list_to_convert=training, p=json_path, data_dicts=data_dicts_train
             )
 
             data_dicts_val = create_data_dict(
-                list_to_convert=validation, p=p, data_dicts=data_dicts_val
+                list_to_convert=validation, p=json_path, data_dicts=data_dicts_val
             )
 
             data_dicts_test = create_data_dict(
-                list_to_convert=test, p=p, data_dicts=data_dicts_test
+                list_to_convert=test, p=json_path, data_dicts=data_dicts_test
             )
 
         combined_ds = PairedDataSet()

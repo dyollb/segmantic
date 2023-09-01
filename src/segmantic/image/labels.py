@@ -1,4 +1,5 @@
 import colorsys
+import json
 from pathlib import Path
 from typing import Callable, Dict, Tuple
 
@@ -104,6 +105,13 @@ def load_tissue_list(file_name: Path) -> Dict[str, int]:
                 tissue_label_map[tissue] = next_id
                 next_id += 1
     return tissue_label_map
+
+
+def load_decathlon_tissuelist(file_name: Path) -> Dict[str, int]:
+    """Load tissue list from decathlon style 'labels'"""
+    labels: Dict[str, str] = json.loads(file_name.read_text())["labels"]
+    labels["0"] = "Background"
+    return {n: int(id) for id, n in labels.items()}
 
 
 def load_tissue_colors(file_name: Path) -> Dict[int, RGBTuple]:

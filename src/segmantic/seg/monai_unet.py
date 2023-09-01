@@ -63,7 +63,7 @@ from pytorch_lightning.callbacks import (
 )
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from ..image.labels import load_tissue_list
+from ..image.labels import load_decathlon_tissuelist, load_tissue_list
 from ..seg.enum import EnsembleCombination
 from ..seg.transforms import SelectBestEnsembled
 from ..utils import config
@@ -385,7 +385,7 @@ class Net(pl.LightningModule):
 
 def train(
     *,
-    dataset: Union[Path, List[Path]] = [],
+    datalist: Union[Path, List[Path]] = [],
     image_dir: Path = None,
     labels_dir: Path = None,
     output_dir: Path,
@@ -437,11 +437,17 @@ def train(
             raise ValueError(
                 "'num_classes' and 'tissue_list' are redundant. Prefer 'num_classes'."
             )
-        if tissue_list:
-            tissue_dict = load_tissue_list(tissue_list)
+        if num_classes <= 0:
+            if tissue_list:
+                tissue_dict = load_tissue_list(tissue_list)
+            else:
+                if isinstance(datalist, (str, Path)):
+                    datalist = [datalist]
+                tissue_dict = load_decathlon_tissuelist(datalist[0])
             num_classes = max(tissue_dict.values()) + 1
             if len(tissue_dict) != num_classes:
                 raise ValueError("Expecting contiguous labels in range [0,N-1]")
+
         if num_classes <= 1:
             raise ValueError("'num_classes' is expected to be > 1")
 
@@ -456,8 +462,8 @@ def train(
         )
     if image_dir and labels_dir:
         net.dataset = PairedDataSet(image_dir=image_dir, labels_dir=labels_dir)
-    elif dataset:
-        net.dataset = PairedDataSet.load_from_json(dataset)
+    elif datalist:
+        net.dataset = PairedDataSet.load_from_json(datalist)
     else:
         raise ValueError(
             "Either provide a dataset file, or an image_dir, labels_dir pair."

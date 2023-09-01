@@ -1,10 +1,11 @@
 import inspect
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import typer
+from monai.data.decathlon_datalist import load_decathlon_datalist
 
-from ..image.labels import load_tissue_list
+from ..image.labels import load_decathlon_tissuelist, load_tissue_list
 from ..seg import monai_unet
 from ..seg.enum import EnsembleCombination
 from ..utils import config
@@ -128,14 +129,11 @@ def cross_validate(
 
 @app.command()
 def train(
-    image_dir: Path = typer.Option(
-        ..., "--image-dir", "-i", help="directory containing images"
+    datalist_file: Path = typer.Option(
+        ..., "--datalist", "-d", help="decathlon style datalist json file"
     ),
-    labels_dir: Path = typer.Option(
-        None, "--labels-dir", "-l", help="directory containing labelfields"
-    ),
-    tissue_list: Path = typer.Option(
-        ..., "--tissue-list", "-t", help="label descriptors in iSEG format"
+    tissue_list: Optional[Path] = typer.Option(
+        None, "--tissue-list", "-t", help="label descriptors in iSEG format"
     ),
     output_dir: Path = typer.Option(
         Path("results"),
@@ -155,8 +153,7 @@ def train(
     """
 
     monai_unet.train(
-        image_dir=image_dir,
-        labels_dir=labels_dir,
+        datalist=datalist_file,
         tissue_list=tissue_list,
         num_channels=num_channels,
         max_epochs=max_epochs,
@@ -167,20 +164,14 @@ def train(
 
 @app.command()
 def predict(
-    image_dir: Path = typer.Option(
-        ..., "--image-dir", "-i", help="directory containing images"
-    ),
-    labels_dir: Path = typer.Option(
-        None,
-        "--labels-dir",
-        "-l",
-        help="directory containing labelfields",
+    datalist_file: Path = typer.Option(
+        ..., "--datalist", "-d", help="decathlon style datalist json file"
     ),
     model_file: Path = typer.Option(
         ..., "--model-file", "-m", help="saved model checkpoint"
     ),
     tissue_list: Path = typer.Option(
-        ..., "--tissue-list", "-t", help="label descriptors in iSEG format"
+        None, "--tissue-list", "-t", help="label descriptors in iSEG format"
     ),
     results_dir: Path = typer.Option(
         None, "--results-dir", "-r", help="output directory"
@@ -189,8 +180,7 @@ def predict(
         [], "--spacing", help="if specified, the image is first resampled"
     ),
     gpu_ids: List[int] = [0],
-    image_glob: str = "*.nii.gz",
-    labels_glob: str = "*.nii.gz",
+    datalist_key: str = "test",
 ) -> None:
     """Predict segmentations
 
@@ -199,16 +189,20 @@ def predict(
         -i ./dataset/images -m model.ckpt --results-dir ./results --tissue-list ./dataset/labels.txt
     """
 
-    def _get_files(path: Path, pattern: str) -> List[Path]:
-        if path.is_file():
-            return [path]
-        return list(sorted(f for f in path.glob(pattern)))
+    datalist = load_decathlon_datalist(datalist_file, data_list_key=datalist_key)
+    test_images = [Path(d["image"]) for d in datalist]
+    test_labels = [Path(d["label"]) for d in datalist if "label" in d]
+
+    if tissue_list is not None:
+        tissue_dict = load_tissue_list(tissue_list)
+    else:
+        tissue_dict = load_decathlon_tissuelist(datalist_file)
 
     monai_unet.predict(
         model_file=model_file,
-        test_images=_get_files(image_dir, image_glob),
-        test_labels=_get_files(labels_dir, labels_glob) if labels_dir else [],
-        tissue_dict=load_tissue_list(tissue_list),
+        test_images=test_images,
+        test_labels=test_labels,
+        tissue_dict=tissue_dict,
         output_dir=results_dir,
         spacing=spacing,
         gpu_ids=gpu_ids,
@@ -216,21 +210,15 @@ def predict(
 
 
 @app.command()
-def create_ensemble(
-    image_dir: Path = typer.Option(
-        ..., "--image-dir", "-i", help="directory containing images"
-    ),
-    labels_dir: Path = typer.Option(
-        None,
-        "--labels-dir",
-        "-l",
-        help="directory containing labelfields",
+def ensemble_predict(
+    datalist_file: Path = typer.Option(
+        ..., "--datalist", "-d", help="decathlon style datalist json file"
     ),
     models_dir: Path = typer.Option(
         ..., "--models-dir", "-m", help="saved model checkpoints"
     ),
     tissue_list: Path = typer.Option(
-        ..., "--tissue-list", "-t", help="label descriptors in iSEG format"
+        None, "--tissue-list", "-t", help="label descriptors in iSEG format"
     ),
     results_dir: Path = typer.Option(
         None, "--results-dir", "-r", help="output directory"
@@ -245,6 +233,7 @@ def create_ensemble(
         [], "--spacing", help="if specified, the image is first resampled"
     ),
     gpu_ids: List[int] = [0],
+    datalist_key: str = "test",
 ) -> None:
     """Ensemble-based prediction
 
@@ -253,17 +242,20 @@ def create_ensemble(
         -i ./dataset/images -m ./training_01 -cm vote --results-dir ./results --tissue-list ./dataset/labels.txt
     """
 
-    def _get_nifti_files(dir: Path) -> List[Path]:
-        return sorted(f for f in dir.glob("*.nii.gz"))
+    datalist = load_decathlon_datalist(datalist_file, data_list_key=datalist_key)
+    test_images = [Path(d["image"]) for d in datalist]
+    test_labels = [Path(d["label"]) for d in datalist if "label" in d]
 
-    def _get_ckpt_files(dir: Path) -> List[Path]:
-        return sorted(f for f in dir.glob("*.ckpt"))
+    if tissue_list is not None:
+        tissue_dict = load_tissue_list(tissue_list)
+    else:
+        tissue_dict = load_decathlon_tissuelist(datalist_file)
 
     monai_unet.ensemble_creator(
-        model_files=_get_ckpt_files(models_dir),
-        test_images=_get_nifti_files(image_dir),
-        test_labels=_get_nifti_files(labels_dir) if labels_dir else [],
-        tissue_dict=load_tissue_list(tissue_list),
+        model_files=sorted(f for f in models_dir.glob("*.ckpt")),
+        test_images=test_images,
+        test_labels=test_labels,
+        tissue_dict=tissue_dict,
         output_dir=results_dir,
         combination_mode=combination_mode,
         candidate_per_tissue_path=candidate_per_tissue_path,
