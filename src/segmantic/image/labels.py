@@ -109,6 +109,7 @@ def load_tissue_list(file_name: Path) -> Dict[str, int]:
 
 def load_decathlon_tissuelist(file_name: Path) -> Dict[str, int]:
     """Load tissue list from decathlon style 'labels'"""
+    print(f"Reading {file_name}")
     labels: Dict[str, str] = json.loads(file_name.read_text())["labels"]
     labels["0"] = "Background"
     return {n: int(id) for id, n in labels.items()}

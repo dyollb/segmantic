@@ -4,12 +4,18 @@ import subprocess as sp
 import sys
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple
 
+import lightning.pytorch as pl
 import numpy as np
-import pytorch_lightning as pl
 import torch
 from adabelief_pytorch import AdaBelief
+from lightning.pytorch.callbacks import (
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
+)
+from lightning.pytorch.loggers import TensorBoardLogger
 from monai.bundle import ConfigParser
 from monai.config import print_config
 from monai.data import (
@@ -56,12 +62,6 @@ from monai.transforms import (
 from monai.transforms.spatial.dictionary import Spacingd
 from monai.transforms.transform import MapTransform, Transform
 from monai.utils import set_determinism
-from pytorch_lightning.callbacks import (
-    EarlyStopping,
-    LearningRateMonitor,
-    ModelCheckpoint,
-)
-from pytorch_lightning.loggers import TensorBoardLogger
 
 from ..image.labels import load_decathlon_tissuelist, load_tissue_list
 from ..seg.enum import EnsembleCombination
@@ -385,7 +385,7 @@ class Net(pl.LightningModule):
 
 def train(
     *,
-    datalist: Union[Path, List[Path]] = [],
+    datalist: Path,
     image_dir: Path = None,
     labels_dir: Path = None,
     output_dir: Path,
@@ -431,7 +431,7 @@ def train(
 
     # initialise the LightningModule
     if checkpoint_file and Path(checkpoint_file).exists():
-        net = Net.load_from_checkpoint(f"{checkpoint_file}")
+        net: Net = Net.load_from_checkpoint(f"{checkpoint_file}")
     else:
         if num_classes > 0 and tissue_list:
             raise ValueError(
@@ -441,9 +441,7 @@ def train(
             if tissue_list:
                 tissue_dict = load_tissue_list(tissue_list)
             else:
-                if isinstance(datalist, (str, Path)):
-                    datalist = [datalist]
-                tissue_dict = load_decathlon_tissuelist(datalist[0])
+                tissue_dict = load_decathlon_tissuelist(datalist)
             num_classes = max(tissue_dict.values()) + 1
             if len(tissue_dict) != num_classes:
                 raise ValueError("Expecting contiguous labels in range [0,N-1]")
@@ -551,7 +549,7 @@ def predict(
         print(f"WARNING: Loading legacy model settings from {model_settings_json}")
         with model_settings_json.open() as json_file:
             settings = json.load(json_file)
-        net = Net.load_from_checkpoint(f"{model_file}", **settings)
+        net: Net = Net.load_from_checkpoint(f"{model_file}", **settings)
     else:
         net = Net.load_from_checkpoint(
             f"{model_file}", channels=channels, strides=strides, dropout=dropout
@@ -743,10 +741,11 @@ def cross_validate(
             image_dir=test_image_dir, labels_dir=test_labels_dir
         )
 
+    datafolds_dir = output_dir / "datafolds"
     all_datafold_paths: List[Path] = PairedDataSet.kfold_crossval(
         num_splits=num_splits,
         data_dicts=data_dicts,
-        output_dir=output_dir,
+        output_dir=datafolds_dir,
         test_data_dicts=test_data_dicts,
     )
 
@@ -767,7 +766,7 @@ def cross_validate(
 
             data: dict = loads(config_file.read_text())
 
-            data["dataset"] = str(dataset_path)
+            data["datalist"] = str(dataset_path)
             data.pop("image_dir")
             data.pop("labels_dir")
             data["output_dir"] = str(current_output)
@@ -781,7 +780,7 @@ def cross_validate(
             result = sp.run(
                 [
                     sys.executable,
-                    str(Path.cwd().joinpath("run_monai_unet.py")),
+                    str(Path.cwd() / "run_monai_unet.py"),
                     "train-config",
                     "-c",
                     config_file,

@@ -30,5 +30,6 @@ def test_interp1d():
     # assert yi.device.type ==
     if torch.cuda.is_available():
         x = torch.tensor([-2.0, 11], device=torch.device("cuda"))
+        xp, yp = xp.to(x.device), yp.to(x.device)
         yi = transform.interp1d(x, xp, yp)
         assert x.device == yi.device

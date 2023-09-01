@@ -40,6 +40,7 @@ def find_matching_files(input_globs: List[Path], verbose: bool = True):
 def create_data_dict(
     list_to_convert: List[Dict[str, str]], p: Path, data_dicts: List[Dict[str, Path]]
 ) -> List[Dict[str, Path]]:
+    print(list_to_convert)
     for element in list_to_convert:
         # special case: absolute paths
         if Path(element["image"]).is_absolute():
@@ -168,8 +169,7 @@ class PairedDataSet:
     ) -> List:
         kf = KFold(n_splits=num_splits)
 
-        all_fold_files_dir = output_dir.joinpath("datafolds")
-        all_fold_files_dir.mkdir(exist_ok=True)
+        output_dir.mkdir(exist_ok=True, parents=True)
 
         image_idx = np.arange(len(data_dicts))
         all_dataset_paths: List[Path] = []
@@ -180,7 +180,7 @@ class PairedDataSet:
             temp_dataset._val_files = [data_dicts[i] for i in val_idx]
             temp_dataset._test_files = test_data_dicts
 
-            temp_dataset_path = all_fold_files_dir.joinpath(f"fold_{count}.json")
+            temp_dataset_path = output_dir / f"fold_{count}.json"
             temp_dataset_path.write_text(temp_dataset.dump_dataset())
             all_dataset_paths.append(temp_dataset_path)
 
@@ -209,10 +209,10 @@ class PairedDataSet:
         data_dicts_test: List[Dict[str, Path]] = []
 
         for json_path in [Path(f) for f in datalist_paths]:
-            ds = json.loads(json_path.read_text())
+            ds: dict = json.loads(json_path.read_text())
             training = ds["training"]
             validation = ds["validation"]
-            test = ds["test"] if "test" in ds else []
+            test = ds.get("test", [])
 
             data_dicts_train = create_data_dict(
                 list_to_convert=training, p=json_path, data_dicts=data_dicts_train
@@ -222,9 +222,7 @@ class PairedDataSet:
                 list_to_convert=validation, p=json_path, data_dicts=data_dicts_val
             )
 
-            data_dicts_test = create_data_dict(
-                list_to_convert=test, p=json_path, data_dicts=data_dicts_test
-            )
+            data_dicts_test = [{"image": Path(f)} for f in test]
 
         combined_ds = PairedDataSet()
         combined_ds._train_files = data_dicts_train

@@ -46,14 +46,14 @@ def train_config(
 
     Example config 'single dataset':
     {
-        "dataset" = "/dataA/dataset.json",
+        "datalist" = "/dataA/dataset.json",
         "output_dir" = "<path where trained model and logs are saved>",
         ...
     }
 
     Example config 'multiple datasets':
     {
-        "dataset" = ["/dataA/dataset.json", "/dataB/dataset.json"],
+        "datalist" = ["/dataA/dataset.json", "/dataB/dataset.json"],
         "output_dir" = "<path where trained model and logs are saved>",
         ...
     }

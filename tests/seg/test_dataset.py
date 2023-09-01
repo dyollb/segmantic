@@ -76,8 +76,10 @@ def test_load_from_json(tmp_path: Path):
 
 
 def test_kfold_crossval(tmp_path: Path):
-    output_dir = tmp_path.joinpath("k_fold_outputs")
+    output_dir = tmp_path / "k_fold_outputs"
     output_dir.mkdir(exist_ok=True)
+
+    datafolds_dir = output_dir / "datafolds"
 
     image_dir, labels_dir = dataset_mockup(root_path=tmp_path, size=21)
     data_dicts = dataset.PairedDataSet.create_data_dict(
@@ -92,12 +94,11 @@ def test_kfold_crossval(tmp_path: Path):
     all_datafold_paths = dataset.PairedDataSet.kfold_crossval(
         num_splits=7,
         data_dicts=data_dicts,
-        output_dir=output_dir,
+        output_dir=datafolds_dir,
         test_data_dicts=test_data_dicts,
     )
-    datafolds_dir = output_dir.joinpath("datafolds")
     assert len(all_datafold_paths) == 7
-    assert len(sorted(list(datafolds_dir.glob("*.json")))) == 7
+    assert len(list(datafolds_dir.glob("*.json"))) == 7
 
     for dpath in all_datafold_paths:
         assert Path(dpath).is_file()

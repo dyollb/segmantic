@@ -26,14 +26,14 @@ repos:
       - id: requirements-txt-fixer
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.0.277
+    rev: v0.0.286
     hooks:
       - id: ruff
         name: ruff
         args: [ --fix, --exit-non-zero-on-fix ]
 
   - repo: https://github.com/psf/black
-    rev: 23.3.0
+    rev: 23.7.0
     hooks:
       - id: black
         name: format code
@@ -46,14 +46,14 @@ repos:
         args: ["--profile", "black"]
 
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.8.0
+    rev: v3.10.1
     hooks:
       - id: pyupgrade
         name: upgrade code
         args: ["--py38-plus"]
 
   - repo: https://github.com/executablebooks/mdformat
-    rev: 0.7.16
+    rev: 0.7.17
     hooks:
       - id: mdformat
         name: format markdown
@@ -63,14 +63,14 @@ repos:
         exclude: CHANGELOG.md
 
   - repo: https://github.com/PyCQA/flake8
-    rev: 6.0.0
+    rev: 6.1.0
     hooks:
       - id: flake8
         name: check PEP8
         args: ["--ignore=E501,W503,E203"]
 
   - repo: https://github.com/hadialqattan/pycln
-    rev: v2.1.5
+    rev: v2.2.2
     hooks:
       - id: pycln
         name: prune imports
