@@ -85,3 +85,8 @@ repos:
       - id: nbqa-mypy
         additional_dependencies: [mypy]
         name: static analysis for notebooks
+
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.16.10
+    hooks:
+      - id: typos

@@ -9,46 +9,21 @@ from sklearn.model_selection import KFold
 from ..utils.json import PathEncoder
 
 
-def find_matching_files(input_globs: List[Path], verbose: bool = True):
-    dir_0 = Path(input_globs[0].anchor)
-    glob_0 = str(input_globs[0].relative_to(dir_0))
-    ext_0 = input_globs[0].name.rsplit("*")[-1]
-
-    candidate_files = {p.name.replace(ext_0, ""): [p] for p in dir_0.glob(glob_0)}
-
-    for other_glob in input_globs[1:]:
-        dir_i = Path(other_glob.anchor)
-        glob_i = str(other_glob.relative_to(dir_i))
-        ext_i = other_glob.name.rsplit("*")[-1]
-
-        for p in dir_i.glob(glob_i):
-            key = p.name.replace(ext_i, "")
-            if key in candidate_files:
-                candidate_files[key].append(p)
-            elif verbose:
-                print(f"No match found for {key} : {p}")
-
-    output_files = [v for v in candidate_files.values() if len(v) == len(input_globs)]
-
-    if verbose:
-        print(f"Number of files in {input_globs[0]}: {len(candidate_files)}")
-        print(f"Number of tuples: {len(output_files)}\n")
-
-    return output_files
-
-
 def create_data_dict(
-    list_to_convert: List[Dict[str, str]], p: Path, data_dicts: List[Dict[str, Path]]
+    list_to_convert: List[Dict[str, str]],
+    data_dir: Path,
+    data_dicts: List[Dict[str, Path]],
 ) -> List[Dict[str, Path]]:
-    print(list_to_convert)
+    """Handle glob expressions to build datalist"""
+
     for element in list_to_convert:
         # special case: absolute paths
         if Path(element["image"]).is_absolute():
             image_files = [Path(element["image"])]
             label_files = [Path(element["label"])]
         else:
-            image_files = list(p.parent.glob(element["image"]))
-            label_files = list(p.parent.glob(element["label"]))
+            image_files = list(data_dir.glob(element["image"]))
+            label_files = list(data_dir.glob(element["label"]))
         assert len(image_files) == len(label_files)
 
         for i_element, o_element in zip(
@@ -132,7 +107,7 @@ class PairedDataSet:
             {
                 "training": self._train_files,
                 "validation": self._val_files,
-                "test": self._test_files,
+                "test": [t["image"] for t in self._test_files],
             },
             cls=PathEncoder,
         )
@@ -215,11 +190,15 @@ class PairedDataSet:
             test = ds.get("test", [])
 
             data_dicts_train = create_data_dict(
-                list_to_convert=training, p=json_path, data_dicts=data_dicts_train
+                list_to_convert=training,
+                data_dir=json_path.parent,
+                data_dicts=data_dicts_train,
             )
 
             data_dicts_val = create_data_dict(
-                list_to_convert=validation, p=json_path, data_dicts=data_dicts_val
+                list_to_convert=validation,
+                data_dir=json_path.parent,
+                data_dicts=data_dicts_val,
             )
 
             data_dicts_test = [{"image": Path(f)} for f in test]
