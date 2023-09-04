@@ -20,8 +20,6 @@ from monai.data import (
     list_data_collate,
 )
 from monai.engines import EnsembleEvaluator
-
-# from monai.handlers import MeanDice, from_engine
 from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
 from monai.metrics import ConfusionMatrixMetric, CumulativeAverage, DiceMetric
@@ -33,7 +31,6 @@ from monai.transforms import (
     AsDiscreted,
     Compose,
     CropForegroundd,
-    EnsureChannelFirstd,
     EnsureType,
     EnsureTyped,
     Invertd,
@@ -80,8 +77,6 @@ class Net(pl.LightningModule):
     config_augmentation: dict = {}
     augment_intensity: bool = False
     augment_spatial: bool = False
-    best_val_dice = 0
-    best_val_epoch = 0
     num_samples: int = 4
     optimizer: dict = {
         "optimizer": "Adam",
@@ -137,6 +132,9 @@ class Net(pl.LightningModule):
         self.dice_metric = DiceMetric(
             include_background=False, reduction="mean", get_not_nans=False
         )
+        self.best_val_dice = 0
+        self.best_val_epoch = 0
+        self.validation_step_outputs: List[dict] = []
 
     @property
     def num_classes(self):
@@ -152,8 +150,7 @@ class Net(pl.LightningModule):
         spacing: Sequence[float] = [],
     ) -> Transform:
         xforms = [
-            LoadImaged(keys=keys, reader="ITKReader"),
-            EnsureChannelFirstd(keys=keys),
+            LoadImaged(keys=keys, reader="ITKReader", ensure_channel_first=True),
             Orientationd(keys=keys, axcodes="RAS"),
             NormalizeIntensityd(keys="image", nonzero=False, channel_wise=True),
             CropForegroundd(keys=keys, source_key="label"),
@@ -347,16 +344,19 @@ class Net(pl.LightningModule):
         outputs = [self.post_pred(i) for i in decollate_batch(outputs)]
         labels = [self.post_label(i) for i in decollate_batch(labels)]
         self.dice_metric(y_pred=outputs, y=labels)
+        d = {"val_loss": loss, "val_number": len(outputs)}
+        self.validation_step_outputs.append(d)
         return {"val_loss": loss, "val_number": len(outputs)}
 
-    def validation_epoch_end(self, outputs):
+    def on_validation_epoch_end(self):
         val_loss, num_items = 0, 0
-        for output in outputs:
+        for output in self.validation_step_outputs:
             val_loss += output["val_loss"].sum().item()
             num_items += output["val_number"]
         mean_val_dice = self.dice_metric.aggregate().item()
         self.dice_metric.reset()
         mean_val_loss = torch.tensor(val_loss / num_items)
+        self.validation_step_outputs.clear()  # free memory
 
         scheduler = self.lr_schedulers()
         if self.lr_scheduling["scheduler"] == "ReduceOnPlateau":
@@ -690,9 +690,7 @@ def predict(
             print("No output path specified, dice scores won't be saved.")
         else:
             np.savetxt(
-                output_dir.joinpath(
-                    f"mean_dice_{model_file.stem}_generalized_score.txt"
-                ),
+                output_dir / f"mean_dice_{model_file.stem}_generalized_score.txt",
                 all_mean_dice,
                 delimiter=",",
             )

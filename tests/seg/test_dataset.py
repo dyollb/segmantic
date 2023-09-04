@@ -38,7 +38,7 @@ def test_PairedDataSet(tmp_path: Path):
 
 
 def test_load_from_json(tmp_path: Path):
-    val_paths = tmp_path.joinpath("val_paths")
+    val_paths = tmp_path / "val_paths"
     val_paths.mkdir(exist_ok=True)
     image_dir, labels_dir = dataset_mockup(root_path=tmp_path, size=2)
     image_dir_v, labels_dir_v = dataset_mockup(root_path=val_paths, size=1)
