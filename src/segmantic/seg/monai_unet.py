@@ -80,8 +80,6 @@ class Net(pl.LightningModule):
     config_augmentation: dict = {}
     augment_intensity: bool = False
     augment_spatial: bool = False
-    best_val_dice = 0
-    best_val_epoch = 0
     num_samples: int = 4
     optimizer: dict = {
         "optimizer": "Adam",
@@ -137,6 +135,8 @@ class Net(pl.LightningModule):
         self.dice_metric = DiceMetric(
             include_background=False, reduction="mean", get_not_nans=False
         )
+        self.best_val_dice = 0
+        self.best_val_epoch = 0
 
     @property
     def num_classes(self):
