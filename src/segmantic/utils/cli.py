@@ -21,9 +21,11 @@ def cast_to_path(v: Any, param: inspect.Parameter) -> Any:
 
 def get_default_args(signature: inspect.Signature) -> Dict[str, Any]:
     default_args = {
-        k: cast_from_path(v.default, signature.parameters[k])
-        if v.default is not inspect.Parameter.empty
-        else f"<required option: {v.annotation.__name__}>"
+        k: (
+            cast_from_path(v.default, signature.parameters[k])
+            if v.default is not inspect.Parameter.empty
+            else f"<required option: {v.annotation.__name__}>"
+        )
         for k, v in signature.parameters.items()
     }
     return default_args
