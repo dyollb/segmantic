@@ -1,5 +1,5 @@
 {
-    "dataset": null,
+    "datalist": null,
     "tissue_list": null,
     "output_dir": null,
     "checkpoint_file": null,

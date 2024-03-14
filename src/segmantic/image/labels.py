@@ -1,20 +1,23 @@
+from __future__ import annotations
+
 import colorsys
+import json
 from pathlib import Path
-from typing import Callable, Dict, Tuple
+from typing import Callable
 
 import numpy as np
 
-RGBTuple = Tuple[float, float, float]
+RGBTuple = tuple[float, float, float]
 
 
 def build_tissue_mapping(
-    input_label_map: Dict[str, int], mapper: Callable[[str], str]
-) -> Tuple[Dict[str, int], np.ndarray]:
+    input_label_map: dict[str, int], mapper: Callable[[str], str]
+) -> tuple[dict[str, int], np.ndarray]:
     """Build mapping to map label fields
 
     Args:
         input_label_map: Dict of tissue names and labels, e.g. loaded with 'load_tissue_list'
-        mapper: Gunction that maps a tissue name to a new name
+        mapper: Function that maps a tissue name to a new name
 
     Returns:
         1. tissue label dict after mapping
@@ -35,9 +38,9 @@ def build_tissue_mapping(
 
 
 def save_tissue_list(
-    tissue_label_map: Dict[str, int],
+    tissue_label_map: dict[str, int],
     tissue_list_file_name: Path,
-    tissue_color_map: Callable[[str], RGBTuple] = None,
+    tissue_color_map: Callable[[str], RGBTuple] | None = None,
 ) -> None:
     """Save tissue list in iSEG format
 
@@ -83,7 +86,7 @@ def save_tissue_list(
             )
 
 
-def load_tissue_list(file_name: Path) -> Dict[str, int]:
+def load_tissue_list(file_name: Path) -> dict[str, int]:
     """Load tissue list in iSEG format
 
     Example file:
@@ -106,7 +109,15 @@ def load_tissue_list(file_name: Path) -> Dict[str, int]:
     return tissue_label_map
 
 
-def load_tissue_colors(file_name: Path) -> Dict[int, RGBTuple]:
+def load_decathlon_tissuelist(file_name: Path) -> dict[str, int]:
+    """Load tissue list from decathlon style 'labels'"""
+    print(f"Reading {file_name}")
+    labels: dict[str, str] = json.loads(file_name.read_text())["labels"]
+    labels["0"] = "Background"
+    return {n: int(id) for id, n in labels.items()}
+
+
+def load_tissue_colors(file_name: Path) -> dict[int, RGBTuple]:
     """Load tissue colors from iSEG format tissue list
 
     Example file:

@@ -1,13 +1,13 @@
 import json
 from pathlib import Path
-from typing import Tuple
 
 from segmantic.seg import dataset
+from segmantic.utils.file_iterators import find_matching_files
 
 
 def dataset_mockup(
     root_path: Path, label_suffix: str = "", size: int = 3
-) -> Tuple[Path, Path]:
+) -> tuple[Path, Path]:
     image_dir, labels_dir = root_path / "image", root_path / "label"
     image_dir.mkdir(exist_ok=True)
     labels_dir.mkdir(exist_ok=True)
@@ -37,7 +37,7 @@ def test_PairedDataSet(tmp_path: Path):
 
 
 def test_load_from_json(tmp_path: Path):
-    val_paths = tmp_path.joinpath("val_paths")
+    val_paths = tmp_path / "val_paths"
     val_paths.mkdir(exist_ok=True)
     image_dir, labels_dir = dataset_mockup(root_path=tmp_path, size=2)
     image_dir_v, labels_dir_v = dataset_mockup(root_path=val_paths, size=1)
@@ -76,8 +76,10 @@ def test_load_from_json(tmp_path: Path):
 
 
 def test_kfold_crossval(tmp_path: Path):
-    output_dir = tmp_path.joinpath("k_fold_outputs")
+    output_dir = tmp_path / "k_fold_outputs"
     output_dir.mkdir(exist_ok=True)
+
+    datafolds_dir = output_dir / "datafolds"
 
     image_dir, labels_dir = dataset_mockup(root_path=tmp_path, size=21)
     data_dicts = dataset.PairedDataSet.create_data_dict(
@@ -92,12 +94,11 @@ def test_kfold_crossval(tmp_path: Path):
     all_datafold_paths = dataset.PairedDataSet.kfold_crossval(
         num_splits=7,
         data_dicts=data_dicts,
-        output_dir=output_dir,
+        output_dir=datafolds_dir,
         test_data_dicts=test_data_dicts,
     )
-    datafolds_dir = output_dir.joinpath("datafolds")
     assert len(all_datafold_paths) == 7
-    assert len(sorted(list(datafolds_dir.glob("*.json")))) == 7
+    assert len(list(datafolds_dir.glob("*.json"))) == 7
 
     for dpath in all_datafold_paths:
         assert Path(dpath).is_file()
@@ -110,15 +111,15 @@ def test_find_matching_files(tmp_path: Path):
         root_path=tmp_path, size=3, label_suffix="_seg"
     )
 
-    tuple1 = dataset.find_matching_files([image_dir / "**" / "*.nii.gz"])
+    tuple1 = find_matching_files([image_dir / "**" / "*.nii.gz"])
     assert len(tuple1) == 3
 
-    tuple2 = dataset.find_matching_files(
+    tuple2 = find_matching_files(
         [image_dir / "**/*.nii.gz", labels_dir / "**/*_seg.nii.gz"]
     )
     assert len(tuple2) == 3
 
-    tuple2_bad = dataset.find_matching_files(
+    tuple2_bad = find_matching_files(
         [image_dir / "**/*.nii.gz", labels_dir / "**/*.nii.gz"]
     )
     assert len(tuple2_bad) == 0

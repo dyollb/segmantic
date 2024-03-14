@@ -6,13 +6,12 @@ build-backend = "setuptools.build_meta"
 name = "segmantic"
 authors = [{name = "Bryn Lloyd", email = "lloyd@itis.swiss"}]
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {file = "LICENSE"}
 dynamic = ["version"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -72,7 +71,7 @@ profile = "black"
 disallow_untyped_defs = false
 warn_unused_configs = true
 warn_redundant_casts = true
-warn_unused_ignores = true
+warn_unused_ignores = false
 warn_return_any = true
 strict_equality = true
 no_implicit_optional = false
@@ -90,9 +89,15 @@ module = [
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = "itk.*,PIL,matplotlib.*,torch,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml,scipy.*,adabelief_pytorch,h5py,SimpleITK,vtk.*,sitk_cli"
+module = "itk.*,PIL,matplotlib.*,torchvision.*,numba,setuptools,pytest,typer.*,click,colorama,nibabel,sklearn.*,yaml,scipy.*,adabelief_pytorch,h5py,SimpleITK,vtk.*,sitk_cli"
 ignore_missing_imports = true
 
 [tool.ruff]
-select = ["E", "F"]
-ignore = ["E501"]
+lint.select = ["E", "F"]
+lint.ignore = ["E501"]
+
+[tool.typos]
+
+[tool.typos.default.extend-identifiers]
+# *sigh* monai adds 'd' to dictionary transforms
+SpatialPadd = "SpatialPadd"

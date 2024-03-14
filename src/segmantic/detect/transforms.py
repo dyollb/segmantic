@@ -1,14 +1,15 @@
 import json
 import logging
 import traceback
+from collections.abc import Hashable, Mapping
 from pathlib import Path
-from typing import Dict, Hashable, List, Mapping
 
 import numpy as np
 import torch
 from monai.config import KeysCollection, PathLike
 from monai.config.type_definitions import NdarrayOrTensor
 from monai.data.folder_layout import FolderLayout
+from monai.data.meta_tensor import MetaTensor
 from monai.transforms import (
     GaussianSmooth,
     ScaleIntensity,
@@ -16,7 +17,7 @@ from monai.transforms import (
 )
 from monai.transforms.transform import MapTransform
 from monai.utils import ImageMetaKey as Key
-from monai.utils import convert_to_numpy, convert_to_tensor
+from monai.utils import convert_to_dst_type, convert_to_numpy, convert_to_tensor
 from monai.utils.enums import PostFix
 
 __all__ = ["LoadVert", "SaveVert", "EmbedVert", "ExtractVertPosition", "VertHeatMap"]
@@ -35,8 +36,8 @@ class LoadVert(MapTransform):
 
         self.meta_key_postfix = meta_key_postfix
 
-    def __call__(self, data: Mapping[Hashable, PathLike]) -> Dict[Hashable, np.ndarray]:
-        d: Dict = dict(data)
+    def __call__(self, data: Mapping[Hashable, PathLike]) -> dict[Hashable, np.ndarray]:
+        d: dict = dict(data)
         for key in self.key_iterator(d):
             filename = d[key]
             data_k = json.loads(Path(filename).read_text())
@@ -136,15 +137,20 @@ class EmbedVert(MapTransform):
 
     def __call__(self, data):
         d = dict(data)
+
+        ref_image = d[self.ref_key]
+
         ref_meta_key = f"{self.ref_key}_{self.meta_key_postfix}"
-        if "affine" in d[ref_meta_key]:
-            affine = convert_to_numpy(d[ref_meta_key]["affine"])
+        meta_data = (
+            ref_image.meta if isinstance(ref_image, MetaTensor) else d[ref_meta_key]
+        )
+        if "affine" in meta_data:
+            affine = convert_to_numpy(meta_data["affine"])
         else:
             affine = np.eye(4, 4)
         rot_inv = np.linalg.inv(affine[:3, :3])
         t = affine[:3, 3]
 
-        ref_image = d[self.ref_key]
         for k in self.keys:
             vertices = d[k]
             out = np.zeros_like(ref_image)
@@ -153,10 +159,13 @@ class EmbedVert(MapTransform):
                 continuous_idx = np.dot(rot_inv, p - t)
                 idx = np.round(continuous_idx).astype(int)
                 out[idx[0], idx[1], idx[2]] = label
-            d[k] = out
+            d[k] = convert_to_dst_type(out, dst=ref_image)[0]
 
-            meta_key = f"{k}_{self.meta_key_postfix}"
-            d[meta_key].update({"affine": affine, "original_channel_dim": "no_channel"})
+            if not isinstance(ref_image, MetaTensor):
+                meta_key = f"{k}_{self.meta_key_postfix}"
+                d[meta_key].update(
+                    {"affine": affine, "original_channel_dim": "no_channel"}
+                )
 
         return d
 
@@ -180,12 +189,13 @@ class ExtractVertPosition(MapTransform):
 
     def __call__(
         self, data: Mapping[Hashable, np.ndarray]
-    ) -> Dict[Hashable, np.ndarray]:
-        d: Dict = dict(data)
+    ) -> dict[Hashable, np.ndarray]:
+        d: dict = dict(data)
         for key in self.key_iterator(d):
             # locate vertices
+            img = d[key]
             vertices = {}
-            for id in range(1, d[key].shape[0]):
+            for id in range(1, img.shape[0]):
                 if d[key][id, ...].max() < self.threshold:
                     continue
                 X, Y, Z = np.where(d[key][id, ...] == d[key][id, ...].max())
@@ -194,9 +204,9 @@ class ExtractVertPosition(MapTransform):
 
             # transform to physical coordinates
             meta_key = f"{key}_{self.meta_key_postfix}"
-            meta = d.get(meta_key, {})
-            if "affine" in meta:
-                affine = meta["affine"]
+            meta_data = img.meta if isinstance(img, MetaTensor) else d[meta_key]
+            if "affine" in meta_data:
+                affine = convert_to_numpy(meta_data["affine"])
                 rot = affine[:3, :3]
                 t = affine[:3, 3]
                 for id in vertices:
@@ -227,7 +237,7 @@ class BoundingBoxd(MapTransform):
 
 class VertHeatMap(MapTransform):
     def __init__(
-        self, keys: KeysCollection, gamma: float = 1000.0, label_names: List[str] = []
+        self, keys: KeysCollection, gamma: float = 1000.0, label_names: list[str] = []
     ):
         super().__init__(keys)
         self.label_names = label_names
@@ -235,8 +245,8 @@ class VertHeatMap(MapTransform):
 
     def __call__(
         self, data: Mapping[Hashable, np.ndarray]
-    ) -> Dict[Hashable, NdarrayOrTensor]:
-        d: Dict[Hashable, NdarrayOrTensor] = dict(data)
+    ) -> dict[Hashable, NdarrayOrTensor]:
+        d: dict[Hashable, NdarrayOrTensor] = dict(data)
         for k in self.keys:
             i = convert_to_tensor(d[k], dtype=torch.long)
             # one hot if necessary

@@ -1,10 +1,12 @@
 import sys
-from typing import Any, Dict, Hashable, Mapping, Tuple
+from collections.abc import Hashable, Mapping
+from typing import Any
 
 import h5py
 import numpy as np
 from monai.config import KeysCollection, PathLike
 from monai.data.folder_layout import FolderLayout
+from monai.data.meta_tensor import MetaTensor
 from monai.transforms.transform import MapTransform
 from monai.utils import ImageMetaKey as Key
 from monai.utils import convert_to_numpy
@@ -12,7 +14,7 @@ from monai.utils.enums import PostFix
 
 DEFAULT_POST_FIX = PostFix.meta()
 
-LabelInfo = Tuple[str, float, float, float]
+LabelInfo = tuple[str, float, float, float]
 
 
 def voxel_sizes(affine: np.ndarray) -> np.ndarray:
@@ -29,7 +31,7 @@ def export_to_iseg(
     label_field: np.ndarray,
     image: np.ndarray,
     affine: np.ndarray,
-    labels: Dict[int, LabelInfo],
+    labels: dict[int, LabelInfo],
 ) -> None:
     with h5py.File(iseg_file_path, "w") as f:
         f.create_dataset(
@@ -82,7 +84,7 @@ class iSegSaver(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
-        label_dict: Dict[int, LabelInfo],
+        label_dict: dict[int, LabelInfo],
         image_key: str = "image",
         label_key: str = "label",
         allow_missing_keys: bool = False,
@@ -125,22 +127,23 @@ class iSegSaver(MapTransform):
         label_key = self.label_key if self.label_key in d else self.image_key
 
         image = d[image_key]
-        image = np.squeeze(convert_to_numpy(image))
         label = d[label_key]
-        label = np.squeeze(convert_to_numpy(label))
 
+        meta_key = f"{image_key}_{self.meta_key_postfix}"
+        meta_data = image.meta if isinstance(image, MetaTensor) else d[meta_key]
+
+        if "affine" in meta_data:
+            affine = convert_to_numpy(meta_data["affine"])
+        else:
+            affine = np.eye(4, 4)
+
+        image = np.squeeze(convert_to_numpy(image))
+        label = np.squeeze(convert_to_numpy(label))
         if image.shape != label.shape:
             raise RuntimeError(
                 f"{self.__class__.__name__}: image and label have different number of elements or shape"
             )
 
-        meta_key = f"{image_key}_{self.meta_key_postfix}"
-        if "affine" in d[meta_key]:
-            affine = convert_to_numpy(d[meta_key]["affine"])
-        else:
-            affine = np.eye(4, 4)
-
-        meta_data = d[meta_key] if meta_key in d else {}
         subject = meta_data[Key.FILENAME_OR_OBJ] if meta_data else str(self._data_index)
         self._data_index += 1
         filename = self.folder_layout.filename(subject=f"{subject}")

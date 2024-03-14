@@ -80,7 +80,7 @@ segmantic-unet train-config -c config.yml
 
 ## What is this tisse_list?
 
-The example above included a tissue_list option. This is a path to a text file specifying the labels contained in a segmented image. By convention the 'label=0' is the background and is ommited from the the format. A segmentation with three tissues 'Bone'=1, 'Fat'=2, and 'Skin'=3 would be specified as follows:
+The example above included a tissue_list option. This is a path to a text file specifying the labels contained in a segmented image. By convention the 'label=0' is the background and is omitted from the the format. A segmentation with three tissues 'Bone'=1, 'Fat'=2, and 'Skin'=3 would be specified as follows:
 
 ```
     V7
@@ -96,7 +96,7 @@ Instead of providing the 'image_dir'/'labels_dir' pair, the training data can al
 
 ```json
 {
-    "dataset": ["/dataA/dataset.json", "/dataB/dataset.json"],
+    "datalist": ["/dataA/dataset.json", "/dataB/dataset.json"],
     "output_dir": "<path where trained model and logs are saved>",
     "Etc": "etc"
 }

@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Dict
 
 import pytest
 import SimpleITK as sitk
@@ -9,12 +8,12 @@ from segmantic.data.transforms import LabelInfo, iSegSaver
 
 
 @pytest.fixture
-def labels() -> Dict[int, LabelInfo]:
+def labels() -> dict[int, LabelInfo]:
     return {0: ("BG", 0.0, 0.0, 0.0), 1: ("FG", 1.0, 1.0, 1.0)}
 
 
 def test_iSegSaver(
-    tmp_path: Path, labelfield: sitk.Image, labels: Dict[int, LabelInfo]
+    tmp_path: Path, labelfield: sitk.Image, labels: dict[int, LabelInfo]
 ):
     image_file = tmp_path / "image.nii.gz"
     label_file = tmp_path / "label.nii.gz"

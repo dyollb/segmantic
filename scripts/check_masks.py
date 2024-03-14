@@ -29,5 +29,18 @@ def fix_binary_masks(directory: Path, file_glob: str = "*.nii.gz"):
             )
 
 
+def round_half_up(input_dir: Path, output_dir: Path = None):
+    import SimpleITK as sitk
+
+    for f in input_dir.glob("*.nii.gz"):
+        img = sitk.ReadImage(f)
+        img_np = sitk.GetArrayViewFromImage(img)
+        imin, imax = np.min(img_np), np.max(img_np)
+        if imin < 0 or imax > 3:
+            print(f"{f.name}: [{imin}, {imax}]")
+        if img.GetPixelID() in (sitk.sitkFloat32, sitk.sitkFloat64):
+            print(f"{f.name}: {img.GetPixelIDTypeAsString()}")
+
+
 if __name__ == "__main__":
-    typer.run(fix_binary_masks)
+    typer.run(round_half_up)

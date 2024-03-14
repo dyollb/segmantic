@@ -1,5 +1,6 @@
 import math
-from typing import Any, List, Optional, Sequence, Union
+from collections.abc import Sequence
+from typing import Any, Optional, Union
 
 import SimpleITK as sitk
 
@@ -23,7 +24,7 @@ def make_image(
     return image
 
 
-def extract_slices(image: sitk.Image, axis: int = 2) -> List[sitk.Image]:
+def extract_slices(image: sitk.Image, axis: int = 2) -> list[sitk.Image]:
     """Get 2D image slices from 3D image
 
     Args:

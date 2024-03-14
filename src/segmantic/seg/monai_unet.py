@@ -2,9 +2,10 @@ import json
 import os
 import subprocess as sp
 import sys
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Optional
 
 import numpy as np
 import pytorch_lightning as pl
@@ -20,12 +21,10 @@ from monai.data import (
     list_data_collate,
 )
 from monai.engines import EnsembleEvaluator
-
-# from monai.handlers import MeanDice, from_engine
 from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
 from monai.metrics import ConfusionMatrixMetric, CumulativeAverage, DiceMetric
-from monai.networks.layers import Norm
+from monai.networks.layers.factories import Norm
 from monai.networks.nets import UNet
 from monai.networks.utils import one_hot
 from monai.transforms import (
@@ -33,7 +32,6 @@ from monai.transforms import (
     AsDiscreted,
     Compose,
     CropForegroundd,
-    EnsureChannelFirstd,
     EnsureType,
     EnsureTyped,
     Invertd,
@@ -51,6 +49,7 @@ from monai.transforms import (
     RandRotated,
     RandZoomd,
     SaveImaged,
+    SpatialPadd,
     VoteEnsembled,
 )
 from monai.transforms.spatial.dictionary import Spacingd
@@ -63,7 +62,7 @@ from pytorch_lightning.callbacks import (
 )
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from ..image.labels import load_tissue_list
+from ..image.labels import load_decathlon_tissuelist, load_tissue_list
 from ..seg.enum import EnsembleCombination
 from ..seg.transforms import SelectBestEnsembled
 from ..utils import config
@@ -80,8 +79,6 @@ class Net(pl.LightningModule):
     config_augmentation: dict = {}
     augment_intensity: bool = False
     augment_spatial: bool = False
-    best_val_dice = 0
-    best_val_epoch = 0
     num_samples: int = 4
     optimizer: dict = {
         "optimizer": "Adam",
@@ -105,9 +102,10 @@ class Net(pl.LightningModule):
         num_channels: int = 1,
         spatial_dims: int = 3,
         spatial_size: Sequence[int] = None,
-        channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
-        strides: Tuple[int, ...] = (2, 2, 2, 2),
+        channels: tuple[int, ...] = (16, 32, 64, 128, 256),
+        strides: tuple[int, ...] = (2, 2, 2, 2),
         dropout: float = 0.0,
+        act: str = "PRELU",
     ):
         super().__init__()
 
@@ -122,6 +120,7 @@ class Net(pl.LightningModule):
             dropout=dropout,
             num_res_units=2,
             norm=Norm.BATCH,
+            act=act,
         )
         # ToDo: make true/false dependant on if optimizer is default or not
         self.automatic_optimization = False
@@ -137,6 +136,9 @@ class Net(pl.LightningModule):
         self.dice_metric = DiceMetric(
             include_background=False, reduction="mean", get_not_nans=False
         )
+        self.best_val_dice = 0.0
+        self.best_val_epoch = 0.0
+        self.validation_step_outputs: list[dict] = []
 
     @property
     def num_classes(self):
@@ -148,16 +150,24 @@ class Net(pl.LightningModule):
 
     def default_preprocessing(
         self,
-        keys: List[str],
+        keys: list[str],
         spacing: Sequence[float] = [],
     ) -> Transform:
         xforms = [
-            LoadImaged(keys=keys, reader="ITKReader"),
-            EnsureChannelFirstd(keys=keys),
+            LoadImaged(
+                keys=keys,
+                reader="ITKReader",
+                image_only=False,
+                ensure_channel_first=True,
+            ),
             Orientationd(keys=keys, axcodes="RAS"),
             NormalizeIntensityd(keys="image", nonzero=False, channel_wise=True),
-            CropForegroundd(keys=keys, source_key="label"),
-            EnsureTyped(keys=keys, dtype=np.float32, device=self.device),  # type: ignore
+            CropForegroundd(
+                keys=keys,
+                source_key="label" if "label" in keys else "image",
+                allow_smaller=False,
+            ),
+            EnsureTyped(keys=keys, dtype=torch.float32, device=self.device),  # type: ignore
         ]
 
         if spacing:
@@ -165,8 +175,8 @@ class Net(pl.LightningModule):
 
         return Compose(xforms)
 
-    def default_augmentation(self, keys: List[str]):
-        xforms: List[MapTransform] = []
+    def default_augmentation(self, keys: list[str]):
+        xforms: list[MapTransform] = []
 
         if self.augment_spatial:
             mode = ["nearest" if k == "label" else "bilinear" for k in keys]
@@ -179,8 +189,9 @@ class Net(pl.LightningModule):
             xforms.append(
                 RandZoomd(keys=keys, prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=mode)
             )
-        # Set probability of background label being chosen as corp center to 0 and rest to 1.
+        # Set probability of background label being chosen as crop center to 0 and rest to 1.
         xforms += [
+            SpatialPadd(keys=["image", "label"], spatial_size=self.spatial_size),
             RandCropByLabelClassesd(
                 keys=keys,
                 label_key="label",
@@ -188,7 +199,7 @@ class Net(pl.LightningModule):
                 num_classes=self.num_classes,
                 num_samples=self.num_samples,
                 ratios=[0 if x == 0 else 1 for x in range(self.num_classes)],
-            )
+            ),
         ]
 
         if self.augment_intensity:
@@ -347,16 +358,19 @@ class Net(pl.LightningModule):
         outputs = [self.post_pred(i) for i in decollate_batch(outputs)]
         labels = [self.post_label(i) for i in decollate_batch(labels)]
         self.dice_metric(y_pred=outputs, y=labels)
+        d = {"val_loss": loss, "val_number": len(outputs)}
+        self.validation_step_outputs.append(d)
         return {"val_loss": loss, "val_number": len(outputs)}
 
-    def validation_epoch_end(self, outputs):
+    def on_validation_epoch_end(self):
         val_loss, num_items = 0, 0
-        for output in outputs:
+        for output in self.validation_step_outputs:
             val_loss += output["val_loss"].sum().item()
             num_items += output["val_number"]
         mean_val_dice = self.dice_metric.aggregate().item()
         self.dice_metric.reset()
         mean_val_loss = torch.tensor(val_loss / num_items)
+        self.validation_step_outputs.clear()  # free memory
 
         scheduler = self.lr_schedulers()
         if self.lr_scheduling["scheduler"] == "ReduceOnPlateau":
@@ -385,7 +399,7 @@ class Net(pl.LightningModule):
 
 def train(
     *,
-    dataset: Union[Path, List[Path]] = [],
+    datalist: Path,
     image_dir: Path = None,
     labels_dir: Path = None,
     output_dir: Path,
@@ -398,9 +412,10 @@ def train(
     augmentation: dict = {},
     augment_intensity: bool = False,
     augment_spatial: bool = False,
-    channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
-    strides: Tuple[int, ...] = (2, 2, 2, 2),
+    channels: tuple[int, ...] = (16, 32, 64, 128, 256),
+    strides: tuple[int, ...] = (2, 2, 2, 2),
     dropout: float = 0.0,
+    act: str = "PRELU",
     num_samples: int = 4,
     optimizer=None,
     lr_scheduling=None,
@@ -408,7 +423,7 @@ def train(
     early_stop_patience: int = 50,
     mixed_precision: bool = True,
     cache_rate: float = 1.0,
-    gpu_ids: List[int] = [0],
+    gpu_ids: list[int] = [0],
     tissue_list: Path = None,
 ) -> pl.LightningModule:
     if optimizer is None:
@@ -431,17 +446,22 @@ def train(
 
     # initialise the LightningModule
     if checkpoint_file and Path(checkpoint_file).exists():
-        net = Net.load_from_checkpoint(f"{checkpoint_file}")
+        net: Net = Net.load_from_checkpoint(f"{checkpoint_file}", map_location="cpu")
+        net.best_val_dice = 0.0
     else:
         if num_classes > 0 and tissue_list:
             raise ValueError(
                 "'num_classes' and 'tissue_list' are redundant. Prefer 'num_classes'."
             )
-        if tissue_list:
-            tissue_dict = load_tissue_list(tissue_list)
+        if num_classes <= 0:
+            if tissue_list:
+                tissue_dict = load_tissue_list(tissue_list)
+            else:
+                tissue_dict = load_decathlon_tissuelist(datalist)
             num_classes = max(tissue_dict.values()) + 1
             if len(tissue_dict) != num_classes:
                 raise ValueError("Expecting contiguous labels in range [0,N-1]")
+
         if num_classes <= 1:
             raise ValueError("'num_classes' is expected to be > 1")
 
@@ -453,11 +473,12 @@ def train(
             channels=channels,
             strides=strides,
             dropout=dropout,
+            act=act,
         )
     if image_dir and labels_dir:
         net.dataset = PairedDataSet(image_dir=image_dir, labels_dir=labels_dir)
-    elif dataset:
-        net.dataset = PairedDataSet.load_from_json(dataset)
+    elif datalist:
+        net.dataset = PairedDataSet.load_from_json(datalist)
     else:
         raise ValueError(
             "Either provide a dataset file, or an image_dir, labels_dir pair."
@@ -473,7 +494,7 @@ def train(
 
     # store dataset used for training
     output_dir = Path(output_dir)
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(exist_ok=True, parents=True)
     log_dir = output_dir / "logs"
     (output_dir / "Dataset.json").write_text(net.dataset.dump_dataset())
 
@@ -529,15 +550,15 @@ def train(
 
 def predict(
     model_file: Path,
-    test_images: List[Path],
-    test_labels: Optional[List[Path]] = None,
+    test_images: list[Path],
+    test_labels: Optional[list[Path]] = None,
     output_dir: Path = None,
-    tissue_dict: Dict[str, int] = None,
-    channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
-    strides: Tuple[int, ...] = (2, 2, 2, 2),
+    tissue_dict: dict[str, int] = None,
+    channels: tuple[int, ...] = (16, 32, 64, 128, 256),
+    strides: tuple[int, ...] = (2, 2, 2, 2),
     dropout: float = 0.0,
     spacing: Sequence[float] = [],
-    gpu_ids: List[int] = [],
+    gpu_ids: list[int] = [],
 ) -> None:
     # load trained model
     model_settings_json = model_file.with_suffix(".json")
@@ -545,7 +566,7 @@ def predict(
         print(f"WARNING: Loading legacy model settings from {model_settings_json}")
         with model_settings_json.open() as json_file:
             settings = json.load(json_file)
-        net = Net.load_from_checkpoint(f"{model_file}", **settings)
+        net: Net = Net.load_from_checkpoint(f"{model_file}", **settings)
     else:
         net = Net.load_from_checkpoint(
             f"{model_file}", channels=channels, strides=strides, dropout=dropout
@@ -558,8 +579,7 @@ def predict(
     net.to(device)
 
     # pre-processing transforms
-    if test_labels:
-        assert len(test_images) == len(test_labels)
+    if test_labels is not None and len(test_images) == len(test_labels):
         test_files = [
             {"image": img, "label": lbl} for img, lbl in zip(test_images, test_labels)
         ]
@@ -572,7 +592,7 @@ def predict(
     )
 
     # save predicted labels
-    save_transforms: List[MapTransform] = []
+    save_transforms: list[MapTransform] = []
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
 
@@ -580,7 +600,7 @@ def predict(
             SaveImaged(
                 keys="pred",
                 output_dir=output_dir,
-                output_postfix="seg",
+                output_postfix="",
                 resample=False,
                 separate_folder=False,
                 print_log=False,
@@ -686,9 +706,7 @@ def predict(
             print("No output path specified, dice scores won't be saved.")
         else:
             np.savetxt(
-                output_dir.joinpath(
-                    f"mean_dice_{model_file.stem}_generalized_score.txt"
-                ),
+                output_dir / f"mean_dice_{model_file.stem}_generalized_score.txt",
                 all_mean_dice,
                 delimiter=",",
             )
@@ -716,7 +734,7 @@ def cross_validate(
     test_image_dir: Path = None,
     test_labels_dir: Path = None,
     num_splits: int = 7,
-    gpu_ids: List[int] = [0],
+    gpu_ids: list[int] = [0],
 ):
     print_config()
     print("Cross-validating")
@@ -737,20 +755,21 @@ def cross_validate(
             image_dir=test_image_dir, labels_dir=test_labels_dir
         )
 
-    all_datafold_paths: List[Path] = PairedDataSet.kfold_crossval(
+    datafolds_dir = output_dir / "datafolds"
+    all_datafold_paths: list[Path] = PairedDataSet.kfold_crossval(
         num_splits=num_splits,
         data_dicts=data_dicts,
-        output_dir=output_dir,
+        output_dir=datafolds_dir,
         test_data_dicts=test_data_dicts,
     )
 
     for config_file in Path(config_files_dir).iterdir():
-        assert config_file.suffix in [".json", ".yaml"]
+        assert config_file.suffix in [".json", ".yml"], f"suffix: {config_file}"
         is_json = config_file and config_file.suffix.lower() == ".json"
         dumps = partial(config.dumps, is_json=is_json)
         loads = partial(config.loads, is_json=is_json)
 
-        output_dir_scenario = output_dir / config_file.name
+        output_dir_scenario = output_dir / config_file.name.rsplit(".", 1)[0]
         output_dir_scenario.mkdir(exist_ok=True)
 
         for count, dataset_path in enumerate(all_datafold_paths):
@@ -761,28 +780,32 @@ def cross_validate(
 
             data: dict = loads(config_file.read_text())
 
-            data["dataset"] = str(dataset_path)
-            data.pop("image_dir")
-            data.pop("labels_dir")
+            data["datalist"] = str(dataset_path)
+            data.pop("image_dir", None)
+            data.pop("labels_dir", None)
             data["output_dir"] = str(current_output)
-            current_layers = data["channels"]
-            current_strides = data["strides"]
+            # current_layers = data["channels"]
+            # current_strides = data["strides"]
 
-            config_file.write_text(dumps(data))
+            current_config = current_output / "config.yml"
+            current_config.write_text(dumps(data))
 
             print("start training")
 
             result = sp.run(
                 [
                     sys.executable,
-                    str(Path.cwd().joinpath("run_monai_unet.py")),
+                    "-m",
+                    "segmantic.commands.monai_unet_cli",
                     "train-config",
                     "-c",
-                    config_file,
-                ]
+                    str(current_config),
+                ],
+                cwd=os.fspath(current_output),
+                shell=True,
             )
-            print(result)
-            print("training finished")
+            print(f"training finished : {result.returncode==0}")
+
             if test_image_dir is not None and test_labels_dir is not None:
                 assert test_image_dir.is_dir() and test_labels_dir.is_dir()
 
@@ -800,8 +823,8 @@ def cross_validate(
                             test_images=test_images,
                             test_labels=test_labels,
                             tissue_dict=tissue_dict,
-                            channels=current_layers,
-                            strides=current_strides,
+                            # channels=current_layers,
+                            # strides=current_strides,
                             dropout=0.0,
                             spacing=[1, 1, 1],
                             gpu_ids=gpu_ids,
@@ -823,15 +846,15 @@ def ensemble_evaluate(post_transforms, models, device, test_loader):
 
 
 def ensemble_creator(
-    model_files: List[Path],
-    test_images: List[Path],
-    test_labels: Optional[List[Path]] = None,
+    model_files: list[Path],
+    test_images: list[Path],
+    test_labels: Optional[list[Path]] = None,
     output_dir: Path = None,
-    tissue_dict: Dict[str, int] = None,
+    tissue_dict: dict[str, int] = None,
     spacing: Sequence[float] = [],
     combination_mode: EnsembleCombination = EnsembleCombination.select_best,
     candidate_per_tissue_path: Optional[Path] = None,
-    gpu_ids: List[int] = [],
+    gpu_ids: list[int] = [],
 ):
     if combination_mode == EnsembleCombination.select_best.value:
         if candidate_per_tissue_path is None:
@@ -842,7 +865,7 @@ def ensemble_creator(
 
     device = make_device(gpu_ids)
 
-    models: List[Net] = [
+    models: list[Net] = [
         Net.load_from_checkpoint(str(ckpt_path)) for ckpt_path in model_files
     ]
     num_classes = models[0].num_classes
@@ -877,7 +900,7 @@ def ensemble_creator(
     )
 
     # save predicted labels
-    save_transforms: List[MapTransform] = []
+    save_transforms: list[MapTransform] = []
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
 
@@ -953,7 +976,7 @@ def ensemble_creator(
 
         name_model_dict = config.load(config_file=candidate_per_tissue_path)
 
-        label_model_dict: Dict[int, int] = {
+        label_model_dict: dict[int, int] = {
             tissue_dict[name]: lbl for name, lbl in name_model_dict.items()
         }
 

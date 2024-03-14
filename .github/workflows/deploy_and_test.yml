@@ -38,11 +38,6 @@ jobs:
           python-version: "3.9"
           }
         - {
-          name: "ubuntu-latest - Python 3.8",
-          os: ubuntu-latest,
-          python-version: "3.8"
-          }
-        - {
           name: "ubuntu-latest - Python 3.9",
           os: ubuntu-latest,
           python-version: "3.9"

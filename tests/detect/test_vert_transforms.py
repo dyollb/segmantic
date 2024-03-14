@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from typing import Dict, List
 
 import numpy as np
 import pytest
@@ -24,7 +23,7 @@ TEST_POINT_1 = [13.45, -29.0, 3.5]
 
 
 @pytest.fixture
-def landmarks() -> Dict[str, List[float]]:
+def landmarks() -> dict[str, list[float]]:
     data = {
         KEY_0: TEST_POINT_0,
         KEY_1: TEST_POINT_1,
@@ -44,7 +43,7 @@ def example_image() -> sitk.Image:
     return image
 
 
-def test_LoadVert(tmp_path: Path, landmarks: Dict[str, List[float]]):
+def test_LoadVert(tmp_path: Path, landmarks: dict[str, list[float]]):
     tmp_file = tmp_path / "points.json"
     tmp_file.write_text(json.dumps(landmarks))
 
@@ -63,7 +62,7 @@ def test_LoadVert(tmp_path: Path, landmarks: Dict[str, List[float]]):
 
 
 def test_EmbedVert(
-    tmp_path: Path, landmarks: Dict[str, List[float]], example_image: sitk.Image
+    tmp_path: Path, landmarks: dict[str, list[float]], example_image: sitk.Image
 ):
     vert_file = tmp_path / "points.json"
     vert_file.write_text(json.dumps(landmarks))
@@ -88,7 +87,7 @@ def test_EmbedVert(
 
 
 def test_Vert_RoundTrip(
-    tmp_path: Path, landmarks: Dict[str, List[float]], example_image: sitk.Image
+    tmp_path: Path, landmarks: dict[str, list[float]], example_image: sitk.Image
 ):
     vert_file = tmp_path / "points.json"
     vert_file.write_text(json.dumps(landmarks))
