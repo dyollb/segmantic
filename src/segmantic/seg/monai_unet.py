@@ -20,12 +20,10 @@ from monai.data import (
     list_data_collate,
 )
 from monai.engines import EnsembleEvaluator
-
-# from monai.handlers import MeanDice, from_engine
 from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
 from monai.metrics import ConfusionMatrixMetric, CumulativeAverage, DiceMetric
-from monai.networks.layers import Norm
+from monai.networks.layers.factories import Norm
 from monai.networks.nets import UNet
 from monai.networks.utils import one_hot
 from monai.transforms import (
@@ -33,7 +31,6 @@ from monai.transforms import (
     AsDiscreted,
     Compose,
     CropForegroundd,
-    EnsureChannelFirstd,
     EnsureType,
     EnsureTyped,
     Invertd,
@@ -51,6 +48,7 @@ from monai.transforms import (
     RandRotated,
     RandZoomd,
     SaveImaged,
+    SpatialPadd,
     VoteEnsembled,
 )
 from monai.transforms.spatial.dictionary import Spacingd
@@ -106,6 +104,7 @@ class Net(pl.LightningModule):
         channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
         strides: Tuple[int, ...] = (2, 2, 2, 2),
         dropout: float = 0.0,
+        act: str = "PRELU",
     ):
         super().__init__()
 
@@ -120,6 +119,7 @@ class Net(pl.LightningModule):
             dropout=dropout,
             num_res_units=2,
             norm=Norm.BATCH,
+            act=act,
         )
         # ToDo: make true/false dependant on if optimizer is default or not
         self.automatic_optimization = False
@@ -135,8 +135,9 @@ class Net(pl.LightningModule):
         self.dice_metric = DiceMetric(
             include_background=False, reduction="mean", get_not_nans=False
         )
-        self.best_val_dice = 0
-        self.best_val_epoch = 0
+        self.best_val_dice = 0.0
+        self.best_val_epoch = 0.0
+        self.validation_step_outputs: List[dict] = []
 
     @property
     def num_classes(self):
@@ -152,12 +153,20 @@ class Net(pl.LightningModule):
         spacing: Sequence[float] = [],
     ) -> Transform:
         xforms = [
-            LoadImaged(keys=keys, reader="ITKReader"),
-            EnsureChannelFirstd(keys=keys),
+            LoadImaged(
+                keys=keys,
+                reader="ITKReader",
+                image_only=False,
+                ensure_channel_first=True,
+            ),
             Orientationd(keys=keys, axcodes="RAS"),
             NormalizeIntensityd(keys="image", nonzero=False, channel_wise=True),
-            CropForegroundd(keys=keys, source_key="label"),
-            EnsureTyped(keys=keys, dtype=np.float32, device=self.device),  # type: ignore
+            CropForegroundd(
+                keys=keys,
+                source_key="label" if "label" in keys else "image",
+                allow_smaller=False,
+            ),
+            EnsureTyped(keys=keys, dtype=torch.float32, device=self.device),  # type: ignore
         ]
 
         if spacing:
@@ -179,8 +188,9 @@ class Net(pl.LightningModule):
             xforms.append(
                 RandZoomd(keys=keys, prob=0.2, min_zoom=0.8, max_zoom=1.3, mode=mode)
             )
-        # Set probability of background label being chosen as corp center to 0 and rest to 1.
+        # Set probability of background label being chosen as crop center to 0 and rest to 1.
         xforms += [
+            SpatialPadd(keys=["image", "label"], spatial_size=self.spatial_size),
             RandCropByLabelClassesd(
                 keys=keys,
                 label_key="label",
@@ -188,7 +198,7 @@ class Net(pl.LightningModule):
                 num_classes=self.num_classes,
                 num_samples=self.num_samples,
                 ratios=[0 if x == 0 else 1 for x in range(self.num_classes)],
-            )
+            ),
         ]
 
         if self.augment_intensity:
@@ -347,16 +357,19 @@ class Net(pl.LightningModule):
         outputs = [self.post_pred(i) for i in decollate_batch(outputs)]
         labels = [self.post_label(i) for i in decollate_batch(labels)]
         self.dice_metric(y_pred=outputs, y=labels)
+        d = {"val_loss": loss, "val_number": len(outputs)}
+        self.validation_step_outputs.append(d)
         return {"val_loss": loss, "val_number": len(outputs)}
 
-    def validation_epoch_end(self, outputs):
+    def on_validation_epoch_end(self):
         val_loss, num_items = 0, 0
-        for output in outputs:
+        for output in self.validation_step_outputs:
             val_loss += output["val_loss"].sum().item()
             num_items += output["val_number"]
         mean_val_dice = self.dice_metric.aggregate().item()
         self.dice_metric.reset()
         mean_val_loss = torch.tensor(val_loss / num_items)
+        self.validation_step_outputs.clear()  # free memory
 
         scheduler = self.lr_schedulers()
         if self.lr_scheduling["scheduler"] == "ReduceOnPlateau":
@@ -401,6 +414,7 @@ def train(
     channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
     strides: Tuple[int, ...] = (2, 2, 2, 2),
     dropout: float = 0.0,
+    act: str = "PRELU",
     num_samples: int = 4,
     optimizer=None,
     lr_scheduling=None,
@@ -431,7 +445,8 @@ def train(
 
     # initialise the LightningModule
     if checkpoint_file and Path(checkpoint_file).exists():
-        net: Net = Net.load_from_checkpoint(f"{checkpoint_file}")
+        net: Net = Net.load_from_checkpoint(f"{checkpoint_file}", map_location="cpu")
+        net.best_val_dice = 0.0
     else:
         if num_classes > 0 and tissue_list:
             raise ValueError(
@@ -457,6 +472,7 @@ def train(
             channels=channels,
             strides=strides,
             dropout=dropout,
+            act=act,
         )
     if image_dir and labels_dir:
         net.dataset = PairedDataSet(image_dir=image_dir, labels_dir=labels_dir)
@@ -477,7 +493,7 @@ def train(
 
     # store dataset used for training
     output_dir = Path(output_dir)
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(exist_ok=True, parents=True)
     log_dir = output_dir / "logs"
     (output_dir / "Dataset.json").write_text(net.dataset.dump_dataset())
 
@@ -562,8 +578,7 @@ def predict(
     net.to(device)
 
     # pre-processing transforms
-    if test_labels:
-        assert len(test_images) == len(test_labels)
+    if test_labels is not None and len(test_images) == len(test_labels):
         test_files = [
             {"image": img, "label": lbl} for img, lbl in zip(test_images, test_labels)
         ]
@@ -584,7 +599,7 @@ def predict(
             SaveImaged(
                 keys="pred",
                 output_dir=output_dir,
-                output_postfix="seg",
+                output_postfix="",
                 resample=False,
                 separate_folder=False,
                 print_log=False,
@@ -690,9 +705,7 @@ def predict(
             print("No output path specified, dice scores won't be saved.")
         else:
             np.savetxt(
-                output_dir.joinpath(
-                    f"mean_dice_{model_file.stem}_generalized_score.txt"
-                ),
+                output_dir / f"mean_dice_{model_file.stem}_generalized_score.txt",
                 all_mean_dice,
                 delimiter=",",
             )
@@ -750,12 +763,12 @@ def cross_validate(
     )
 
     for config_file in Path(config_files_dir).iterdir():
-        assert config_file.suffix in [".json", ".yaml"]
+        assert config_file.suffix in [".json", ".yml"], f"suffix: {config_file}"
         is_json = config_file and config_file.suffix.lower() == ".json"
         dumps = partial(config.dumps, is_json=is_json)
         loads = partial(config.loads, is_json=is_json)
 
-        output_dir_scenario = output_dir / config_file.name
+        output_dir_scenario = output_dir / config_file.name.rsplit(".", 1)[0]
         output_dir_scenario.mkdir(exist_ok=True)
 
         for count, dataset_path in enumerate(all_datafold_paths):
@@ -767,27 +780,31 @@ def cross_validate(
             data: dict = loads(config_file.read_text())
 
             data["datalist"] = str(dataset_path)
-            data.pop("image_dir")
-            data.pop("labels_dir")
+            data.pop("image_dir", None)
+            data.pop("labels_dir", None)
             data["output_dir"] = str(current_output)
-            current_layers = data["channels"]
-            current_strides = data["strides"]
+            # current_layers = data["channels"]
+            # current_strides = data["strides"]
 
-            config_file.write_text(dumps(data))
+            current_config = current_output / "config.yml"
+            current_config.write_text(dumps(data))
 
             print("start training")
 
             result = sp.run(
                 [
                     sys.executable,
-                    str(Path.cwd() / "run_monai_unet.py"),
+                    "-m",
+                    "segmantic.commands.monai_unet_cli",
                     "train-config",
                     "-c",
-                    config_file,
-                ]
+                    str(current_config),
+                ],
+                cwd=os.fspath(current_output),
+                shell=True,
             )
-            print(result)
-            print("training finished")
+            print(f"training finished : {result.returncode==0}")
+
             if test_image_dir is not None and test_labels_dir is not None:
                 assert test_image_dir.is_dir() and test_labels_dir.is_dir()
 
@@ -805,8 +822,8 @@ def cross_validate(
                             test_images=test_images,
                             test_labels=test_labels,
                             tissue_dict=tissue_dict,
-                            channels=current_layers,
-                            strides=current_strides,
+                            # channels=current_layers,
+                            # strides=current_strides,
                             dropout=0.0,
                             spacing=[1, 1, 1],
                             gpu_ids=gpu_ids,

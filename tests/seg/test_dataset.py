@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Tuple
 
 from segmantic.seg import dataset
+from segmantic.utils.file_iterators import find_matching_files
 
 
 def dataset_mockup(
@@ -37,7 +38,7 @@ def test_PairedDataSet(tmp_path: Path):
 
 
 def test_load_from_json(tmp_path: Path):
-    val_paths = tmp_path.joinpath("val_paths")
+    val_paths = tmp_path / "val_paths"
     val_paths.mkdir(exist_ok=True)
     image_dir, labels_dir = dataset_mockup(root_path=tmp_path, size=2)
     image_dir_v, labels_dir_v = dataset_mockup(root_path=val_paths, size=1)
@@ -111,15 +112,15 @@ def test_find_matching_files(tmp_path: Path):
         root_path=tmp_path, size=3, label_suffix="_seg"
     )
 
-    tuple1 = dataset.find_matching_files([image_dir / "**" / "*.nii.gz"])
+    tuple1 = find_matching_files([image_dir / "**" / "*.nii.gz"])
     assert len(tuple1) == 3
 
-    tuple2 = dataset.find_matching_files(
+    tuple2 = find_matching_files(
         [image_dir / "**/*.nii.gz", labels_dir / "**/*_seg.nii.gz"]
     )
     assert len(tuple2) == 3
 
-    tuple2_bad = dataset.find_matching_files(
+    tuple2_bad = find_matching_files(
         [image_dir / "**/*.nii.gz", labels_dir / "**/*.nii.gz"]
     )
     assert len(tuple2_bad) == 0

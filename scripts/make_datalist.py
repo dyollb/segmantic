@@ -1,39 +1,11 @@
 import json
 import random
 from pathlib import Path
-from typing import List
 
 import typer
 
 from segmantic.image.labels import load_tissue_list
-
-
-def find_matching_files(input_globs: List[Path], verbose: bool = True):
-    dir_0 = Path(input_globs[0].anchor)
-    glob_0 = str(input_globs[0].relative_to(dir_0))
-    ext_0 = input_globs[0].name.rsplit("*")[-1]
-
-    candidate_files = {p.name.replace(ext_0, ""): [p] for p in dir_0.glob(glob_0)}
-
-    for other_glob in input_globs[1:]:
-        dir_i = Path(other_glob.anchor)
-        glob_i = str(other_glob.relative_to(dir_i))
-        ext_i = other_glob.name.rsplit("*")[-1]
-
-        for p in dir_i.glob(glob_i):
-            key = p.name.replace(ext_i, "")
-            if key in candidate_files:
-                candidate_files[key].append(p)
-            elif verbose:
-                print(f"No match found for {key} : {p}")
-
-    output_files = [v for v in candidate_files.values() if len(v) == len(input_globs)]
-
-    if verbose:
-        print(f"Number of files in {input_globs[0]}: {len(candidate_files)}")
-        print(f"Number of tuples: {len(output_files)}\n")
-
-    return output_files
+from segmantic.utils.file_iterators import find_matching_files
 
 
 def make_datalist(
@@ -78,11 +50,11 @@ def make_datalist(
 
     # build proper datalist with training/validation/test split
     else:
-        pairs = find_matching_files(
+        matches = find_matching_files(
             [data_dir / image_dir / image_glob, data_dir / labels_dir / labels_glob]
         )
         pairs = [
-            (im.relative_to(data_dir), lbl.relative_to(data_dir)) for im, lbl in pairs
+            (p[0].relative_to(data_dir), p[1].relative_to(data_dir)) for p in matches
         ]
 
         random.Random(seed).shuffle(pairs)

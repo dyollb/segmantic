@@ -94,5 +94,11 @@ module = "itk.*,PIL,matplotlib.*,torchvision.*,numba,setuptools,pytest,typer.*,c
 ignore_missing_imports = true
 
 [tool.ruff]
-select = ["E", "F"]
-ignore = ["E501"]
+lint.select = ["E", "F"]
+lint.ignore = ["E501"]
+
+[tool.typos]
+
+[tool.typos.default.extend-identifiers]
+# *sigh* monai adds 'd' to dictionary transforms
+SpatialPadd = "SpatialPadd"

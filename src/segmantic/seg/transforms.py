@@ -1,12 +1,15 @@
+from collections.abc import Hashable, Mapping
 from typing import Dict, Optional, Sequence, Union
 
 import torch
-from monai.config.type_definitions import KeysCollection, NdarrayOrTensor
+from monai.config import KeysCollection
+from monai.config.type_definitions import NdarrayOrTensor, NdarrayTensor
+from monai.data.meta_obj import get_track_meta
 from monai.networks.utils import one_hot
 from monai.transforms.post.array import Ensemble
 from monai.transforms.post.dictionary import Ensembled
-from monai.transforms.transform import Transform
-from monai.utils import TransformBackends
+from monai.transforms.transform import MapTransform, Transform
+from monai.utils import TransformBackends, convert_to_dst_type, convert_to_tensor
 
 
 class SelectBestEnsemble(Ensemble, Transform):
@@ -83,3 +86,42 @@ class SelectBestEnsembled(Ensembled):
             label_model_dict=label_model_dict,
         )
         super().__init__(keys, ensemble, output_key)
+
+
+class MapLabels(Transform):
+    """ """
+
+    backend = [TransformBackends.TORCH]
+
+    def __init__(self, mapping: dict[int, int]) -> None:
+        self.lookup = torch.zeros((max(mapping.keys()) + 1,), dtype=torch.int64)
+        for k in mapping:
+            self.lookup[k] = mapping[k]
+
+    def __call__(self, img: NdarrayTensor) -> NdarrayTensor:
+        img = convert_to_tensor(img, track_meta=get_track_meta())
+        mapping, *_ = convert_to_dst_type(self.lookup, dst=img, dtype=self.lookup.dtype)
+        return mapping[img]  # type: ignore [return-value]
+
+
+class MapLabelsd(MapTransform):
+    """ """
+
+    backend = MapLabels.backend
+
+    def __init__(
+        self,
+        mapping: dict[int, int],
+        keys: KeysCollection,
+        allow_missing_keys: bool = False,
+    ):
+        super().__init__(keys, allow_missing_keys)
+        self.converter = MapLabels(mapping)
+
+    def __call__(
+        self, data: Mapping[Hashable, NdarrayOrTensor]
+    ) -> dict[Hashable, NdarrayOrTensor]:
+        d = dict(data)
+        for key in self.key_iterator(d):
+            d[key] = self.converter(d[key])
+        return d
