@@ -1,5 +1,5 @@
-from collections.abc import Hashable, Mapping
-from typing import Dict, Optional, Sequence, Union
+from collections.abc import Hashable, Mapping, Sequence
+from typing import Optional, Union
 
 import torch
 from monai.config import KeysCollection
@@ -33,7 +33,7 @@ class SelectBestEnsemble(Ensemble, Transform):
 
     backend = [TransformBackends.TORCH]
 
-    def __init__(self, label_model_dict: Dict[int, int]) -> None:
+    def __init__(self, label_model_dict: dict[int, int]) -> None:
         self.label_model_dict = label_model_dict
 
     def __call__(
@@ -70,7 +70,7 @@ class SelectBestEnsembled(Ensembled):
 
     def __init__(
         self,
-        label_model_dict: Dict[int, int],
+        label_model_dict: dict[int, int],
         keys: KeysCollection,
         output_key: Optional[str] = None,
     ) -> None:

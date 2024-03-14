@@ -1,7 +1,8 @@
 import json
 import random
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Optional, Union
 
 import numpy as np
 from sklearn.model_selection import KFold
@@ -11,10 +12,10 @@ from ..utils.json import PathEncoder
 
 
 def create_data_dict(
-    list_to_convert: List[Dict[str, str]],
+    list_to_convert: list[dict[str, str]],
     data_dir: Path,
-    data_dicts: List[Dict[str, Path]],
-) -> List[Dict[str, Path]]:
+    data_dicts: list[dict[str, Path]],
+) -> list[dict[str, Path]]:
     """Handle glob expressions to build datalist"""
 
     for element in list_to_convert:
@@ -54,26 +55,26 @@ class PairedDataSet:
         )
         self._create_split(data_dicts, valid_split, shuffle, random_seed, max_files)
 
-    def training_files(self) -> Sequence[Dict[str, Path]]:
+    def training_files(self) -> Sequence[dict[str, Path]]:
         """Get list of 'image'/'label' pairs (dictionary) for training"""
         return self._train_files
 
-    def validation_files(self) -> Sequence[Dict[str, Path]]:
+    def validation_files(self) -> Sequence[dict[str, Path]]:
         """Get list of 'image'/'label' pairs (dictionary) for validation"""
         return self._val_files
 
-    def test_files(self) -> Sequence[Dict[str, Path]]:
+    def test_files(self) -> Sequence[dict[str, Path]]:
         """Get list of 'image'/'label' pairs (dictionary) for test"""
         return self._test_files
 
     def _create_split(
         self,
-        data_dicts: List[Dict[str, Path]],
+        data_dicts: list[dict[str, Path]],
         valid_split: float,
         shuffle: bool,
         random_seed: int = None,
         max_files: int = 0,
-        test_data_dicts: List[Dict[str, Path]] = [],
+        test_data_dicts: list[dict[str, Path]] = [],
     ):
         self._test_files = test_data_dicts
 
@@ -119,9 +120,9 @@ class PairedDataSet:
         image_glob: str = "*.nii.gz",
         labels_dir: Optional[Path] = None,
         labels_glob: str = "*.nii.gz",
-    ) -> List[Dict[str, Path]]:
+    ) -> list[dict[str, Path]]:
 
-        data_dicts: List[Dict[str, Path]] = []
+        data_dicts: list[dict[str, Path]] = []
         if image_dir is None or labels_dir is None:
             return data_dicts
 
@@ -142,12 +143,12 @@ class PairedDataSet:
     @staticmethod
     def kfold_crossval(
         num_splits: int,
-        data_dicts: List[Dict[str, Path]],
+        data_dicts: list[dict[str, Path]],
         output_dir: Path,
-        test_data_dicts: List[Dict[str, Path]] = [],
+        test_data_dicts: list[dict[str, Path]] = [],
         shuffle: bool = True,
         random_seed: int = None,
-    ) -> List:
+    ) -> list:
         kf = KFold(n_splits=num_splits)
 
         if shuffle:
@@ -157,7 +158,7 @@ class PairedDataSet:
         output_dir.mkdir(exist_ok=True, parents=True)
 
         image_idx = np.arange(len(data_dicts))
-        all_dataset_paths: List[Path] = []
+        all_dataset_paths: list[Path] = []
 
         for count, (train_idx, val_idx) in enumerate(kf.split(image_idx, image_idx)):
             dataset = PairedDataSet()
@@ -173,7 +174,7 @@ class PairedDataSet:
 
     @staticmethod
     def load_from_json(
-        datalist_paths: Union[Path, List[Path]],
+        datalist_paths: Union[Path, list[Path]],
     ):
         """Loads one or more datasets from json descriptor files and returns a single combined dataset
 
@@ -189,9 +190,9 @@ class PairedDataSet:
         if isinstance(datalist_paths, (Path, str)):
             datalist_paths = [datalist_paths]
 
-        data_dicts_train: List[Dict[str, Path]] = []
-        data_dicts_val: List[Dict[str, Path]] = []
-        data_dicts_test: List[Dict[str, Path]] = []
+        data_dicts_train: list[dict[str, Path]] = []
+        data_dicts_val: list[dict[str, Path]] = []
+        data_dicts_test: list[dict[str, Path]] = []
 
         for json_path in [Path(f) for f in datalist_paths]:
             ds: dict = json.loads(json_path.read_text())

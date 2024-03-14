@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Dict, List
 
 import itk
 import numpy as np
@@ -15,11 +14,11 @@ def extract_surfaces(
     file_path: Path,
     output_dir: Path,
     tissuelist_path: Path,
-    selected_tissues: List[int] = [],
+    selected_tissues: list[int] = [],
 ):
     image = itk.imread(f"{file_path}", pixel_type=itk.US)
 
-    tissues: Dict[int, str] = {}
+    tissues: dict[int, str] = {}
     if tissuelist_path.exists():
         name_id_map = load_tissue_list(tissuelist_path)
         tissues = {id: name for name, id in name_id_map.items()}

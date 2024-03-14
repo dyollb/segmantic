@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from typing import Tuple
 
 from segmantic.seg import dataset
 from segmantic.utils.file_iterators import find_matching_files
@@ -8,7 +7,7 @@ from segmantic.utils.file_iterators import find_matching_files
 
 def dataset_mockup(
     root_path: Path, label_suffix: str = "", size: int = 3
-) -> Tuple[Path, Path]:
+) -> tuple[Path, Path]:
     image_dir, labels_dir = root_path / "image", root_path / "label"
     image_dir.mkdir(exist_ok=True)
     labels_dir.mkdir(exist_ok=True)

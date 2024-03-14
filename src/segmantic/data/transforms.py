@@ -1,5 +1,6 @@
 import sys
-from typing import Any, Dict, Hashable, Mapping, Tuple
+from collections.abc import Hashable, Mapping
+from typing import Any
 
 import h5py
 import numpy as np
@@ -13,7 +14,7 @@ from monai.utils.enums import PostFix
 
 DEFAULT_POST_FIX = PostFix.meta()
 
-LabelInfo = Tuple[str, float, float, float]
+LabelInfo = tuple[str, float, float, float]
 
 
 def voxel_sizes(affine: np.ndarray) -> np.ndarray:
@@ -30,7 +31,7 @@ def export_to_iseg(
     label_field: np.ndarray,
     image: np.ndarray,
     affine: np.ndarray,
-    labels: Dict[int, LabelInfo],
+    labels: dict[int, LabelInfo],
 ) -> None:
     with h5py.File(iseg_file_path, "w") as f:
         f.create_dataset(
@@ -83,7 +84,7 @@ class iSegSaver(MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
-        label_dict: Dict[int, LabelInfo],
+        label_dict: dict[int, LabelInfo],
         image_key: str = "image",
         label_key: str = "label",
         allow_missing_keys: bool = False,

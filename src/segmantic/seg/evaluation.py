@@ -1,12 +1,10 @@
-from typing import Dict
-
 import numpy as np
 import SimpleITK as sitk
 
 
 def hausdorff_surface_distance(
     y_pred: sitk.Image, y_ref: sitk.Image
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Compute symmetric surface distances between two binary masks
 
     Args:
@@ -53,7 +51,7 @@ def hausdorff_surface_distance(
 
 def hausdorff_pointwise_distance(
     y_pred: sitk.Image, y_ref: sitk.Image
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Compute symmetric point-wise distances between two binary masks
 
     Args:

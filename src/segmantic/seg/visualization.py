@@ -2,7 +2,7 @@ import colorsys
 import itertools
 import random
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -47,7 +47,7 @@ def make_random_cmap(num_classes: int) -> colors.ListedColormap:
 
 def plot_confusion_matrix(
     cm: np.ndarray,
-    target_names: List[str],
+    target_names: list[str],
     title: str = "Confusion matrix",
     cmap: colors.Colormap = None,
     normalize: bool = True,

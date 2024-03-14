@@ -1,6 +1,6 @@
 import inspect
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import typer
 from monai.data.decathlon_datalist import load_decathlon_datalist
@@ -143,7 +143,7 @@ def train(
     ),
     num_channels: int = 1,
     max_epochs: int = 600,
-    gpu_ids: List[int] = [0],
+    gpu_ids: list[int] = [0],
 ) -> None:
     """Train UNet
 
@@ -176,10 +176,10 @@ def predict(
     results_dir: Path = typer.Option(
         None, "--results-dir", "-r", help="output directory"
     ),
-    spacing: List[float] = typer.Option(
+    spacing: list[float] = typer.Option(
         [], "--spacing", help="if specified, the image is first resampled"
     ),
-    gpu_ids: List[int] = [0],
+    gpu_ids: list[int] = [0],
     datalist_key: str = "test",
 ) -> None:
     """Predict segmentations
@@ -229,10 +229,10 @@ def ensemble_predict(
     candidate_per_tissue_path: Path = typer.Option(
         None, "--candidate-yaml", "-cy", help="yaml with best model for tissues"
     ),
-    spacing: List[int] = typer.Option(
+    spacing: list[int] = typer.Option(
         [], "--spacing", help="if specified, the image is first resampled"
     ),
-    gpu_ids: List[int] = [0],
+    gpu_ids: list[int] = [0],
     datalist_key: str = "test",
 ) -> None:
     """Ensemble-based prediction

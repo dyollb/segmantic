@@ -2,9 +2,10 @@ import json
 import os
 import subprocess as sp
 import sys
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Optional
 
 import numpy as np
 import pytorch_lightning as pl
@@ -101,8 +102,8 @@ class Net(pl.LightningModule):
         num_channels: int = 1,
         spatial_dims: int = 3,
         spatial_size: Sequence[int] = None,
-        channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
-        strides: Tuple[int, ...] = (2, 2, 2, 2),
+        channels: tuple[int, ...] = (16, 32, 64, 128, 256),
+        strides: tuple[int, ...] = (2, 2, 2, 2),
         dropout: float = 0.0,
         act: str = "PRELU",
     ):
@@ -137,7 +138,7 @@ class Net(pl.LightningModule):
         )
         self.best_val_dice = 0.0
         self.best_val_epoch = 0.0
-        self.validation_step_outputs: List[dict] = []
+        self.validation_step_outputs: list[dict] = []
 
     @property
     def num_classes(self):
@@ -149,7 +150,7 @@ class Net(pl.LightningModule):
 
     def default_preprocessing(
         self,
-        keys: List[str],
+        keys: list[str],
         spacing: Sequence[float] = [],
     ) -> Transform:
         xforms = [
@@ -174,8 +175,8 @@ class Net(pl.LightningModule):
 
         return Compose(xforms)
 
-    def default_augmentation(self, keys: List[str]):
-        xforms: List[MapTransform] = []
+    def default_augmentation(self, keys: list[str]):
+        xforms: list[MapTransform] = []
 
         if self.augment_spatial:
             mode = ["nearest" if k == "label" else "bilinear" for k in keys]
@@ -411,8 +412,8 @@ def train(
     augmentation: dict = {},
     augment_intensity: bool = False,
     augment_spatial: bool = False,
-    channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
-    strides: Tuple[int, ...] = (2, 2, 2, 2),
+    channels: tuple[int, ...] = (16, 32, 64, 128, 256),
+    strides: tuple[int, ...] = (2, 2, 2, 2),
     dropout: float = 0.0,
     act: str = "PRELU",
     num_samples: int = 4,
@@ -422,7 +423,7 @@ def train(
     early_stop_patience: int = 50,
     mixed_precision: bool = True,
     cache_rate: float = 1.0,
-    gpu_ids: List[int] = [0],
+    gpu_ids: list[int] = [0],
     tissue_list: Path = None,
 ) -> pl.LightningModule:
     if optimizer is None:
@@ -549,15 +550,15 @@ def train(
 
 def predict(
     model_file: Path,
-    test_images: List[Path],
-    test_labels: Optional[List[Path]] = None,
+    test_images: list[Path],
+    test_labels: Optional[list[Path]] = None,
     output_dir: Path = None,
-    tissue_dict: Dict[str, int] = None,
-    channels: Tuple[int, ...] = (16, 32, 64, 128, 256),
-    strides: Tuple[int, ...] = (2, 2, 2, 2),
+    tissue_dict: dict[str, int] = None,
+    channels: tuple[int, ...] = (16, 32, 64, 128, 256),
+    strides: tuple[int, ...] = (2, 2, 2, 2),
     dropout: float = 0.0,
     spacing: Sequence[float] = [],
-    gpu_ids: List[int] = [],
+    gpu_ids: list[int] = [],
 ) -> None:
     # load trained model
     model_settings_json = model_file.with_suffix(".json")
@@ -591,7 +592,7 @@ def predict(
     )
 
     # save predicted labels
-    save_transforms: List[MapTransform] = []
+    save_transforms: list[MapTransform] = []
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
 
@@ -733,7 +734,7 @@ def cross_validate(
     test_image_dir: Path = None,
     test_labels_dir: Path = None,
     num_splits: int = 7,
-    gpu_ids: List[int] = [0],
+    gpu_ids: list[int] = [0],
 ):
     print_config()
     print("Cross-validating")
@@ -755,7 +756,7 @@ def cross_validate(
         )
 
     datafolds_dir = output_dir / "datafolds"
-    all_datafold_paths: List[Path] = PairedDataSet.kfold_crossval(
+    all_datafold_paths: list[Path] = PairedDataSet.kfold_crossval(
         num_splits=num_splits,
         data_dicts=data_dicts,
         output_dir=datafolds_dir,
@@ -845,15 +846,15 @@ def ensemble_evaluate(post_transforms, models, device, test_loader):
 
 
 def ensemble_creator(
-    model_files: List[Path],
-    test_images: List[Path],
-    test_labels: Optional[List[Path]] = None,
+    model_files: list[Path],
+    test_images: list[Path],
+    test_labels: Optional[list[Path]] = None,
     output_dir: Path = None,
-    tissue_dict: Dict[str, int] = None,
+    tissue_dict: dict[str, int] = None,
     spacing: Sequence[float] = [],
     combination_mode: EnsembleCombination = EnsembleCombination.select_best,
     candidate_per_tissue_path: Optional[Path] = None,
-    gpu_ids: List[int] = [],
+    gpu_ids: list[int] = [],
 ):
     if combination_mode == EnsembleCombination.select_best.value:
         if candidate_per_tissue_path is None:
@@ -864,7 +865,7 @@ def ensemble_creator(
 
     device = make_device(gpu_ids)
 
-    models: List[Net] = [
+    models: list[Net] = [
         Net.load_from_checkpoint(str(ckpt_path)) for ckpt_path in model_files
     ]
     num_classes = models[0].num_classes
@@ -899,7 +900,7 @@ def ensemble_creator(
     )
 
     # save predicted labels
-    save_transforms: List[MapTransform] = []
+    save_transforms: list[MapTransform] = []
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
 
@@ -975,7 +976,7 @@ def ensemble_creator(
 
         name_model_dict = config.load(config_file=candidate_per_tissue_path)
 
-        label_model_dict: Dict[int, int] = {
+        label_model_dict: dict[int, int] = {
             tissue_dict[name]: lbl for name, lbl in name_model_dict.items()
         }
 

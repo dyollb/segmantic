@@ -1,8 +1,8 @@
 import json
 import logging
 import traceback
+from collections.abc import Hashable, Mapping
 from pathlib import Path
-from typing import Dict, Hashable, List, Mapping
 
 import numpy as np
 import torch
@@ -36,8 +36,8 @@ class LoadVert(MapTransform):
 
         self.meta_key_postfix = meta_key_postfix
 
-    def __call__(self, data: Mapping[Hashable, PathLike]) -> Dict[Hashable, np.ndarray]:
-        d: Dict = dict(data)
+    def __call__(self, data: Mapping[Hashable, PathLike]) -> dict[Hashable, np.ndarray]:
+        d: dict = dict(data)
         for key in self.key_iterator(d):
             filename = d[key]
             data_k = json.loads(Path(filename).read_text())
@@ -189,8 +189,8 @@ class ExtractVertPosition(MapTransform):
 
     def __call__(
         self, data: Mapping[Hashable, np.ndarray]
-    ) -> Dict[Hashable, np.ndarray]:
-        d: Dict = dict(data)
+    ) -> dict[Hashable, np.ndarray]:
+        d: dict = dict(data)
         for key in self.key_iterator(d):
             # locate vertices
             img = d[key]
@@ -237,7 +237,7 @@ class BoundingBoxd(MapTransform):
 
 class VertHeatMap(MapTransform):
     def __init__(
-        self, keys: KeysCollection, gamma: float = 1000.0, label_names: List[str] = []
+        self, keys: KeysCollection, gamma: float = 1000.0, label_names: list[str] = []
     ):
         super().__init__(keys)
         self.label_names = label_names
@@ -245,8 +245,8 @@ class VertHeatMap(MapTransform):
 
     def __call__(
         self, data: Mapping[Hashable, np.ndarray]
-    ) -> Dict[Hashable, NdarrayOrTensor]:
-        d: Dict[Hashable, NdarrayOrTensor] = dict(data)
+    ) -> dict[Hashable, NdarrayOrTensor]:
+        d: dict[Hashable, NdarrayOrTensor] = dict(data)
         for k in self.keys:
             i = convert_to_tensor(d[k], dtype=torch.long)
             # one hot if necessary

@@ -1,6 +1,6 @@
 import inspect
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
 def is_path(param: inspect.Parameter) -> bool:
@@ -19,7 +19,7 @@ def cast_to_path(v: Any, param: inspect.Parameter) -> Any:
     return Path(v) if v and is_path(param) else v
 
 
-def get_default_args(signature: inspect.Signature) -> Dict[str, Any]:
+def get_default_args(signature: inspect.Signature) -> dict[str, Any]:
     default_args = {
         k: (
             cast_from_path(v.default, signature.parameters[k])
@@ -32,9 +32,9 @@ def get_default_args(signature: inspect.Signature) -> Dict[str, Any]:
 
 
 def validate_args(
-    args: Dict[str, Any],
+    args: dict[str, Any],
     signature: inspect.Signature,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     valid_args = {}
     for k in args:
         if k in signature.parameters:

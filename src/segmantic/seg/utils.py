@@ -1,9 +1,7 @@
-from typing import List
-
 import torch
 
 
-def make_device(gpu_ids: List[int]) -> torch.device:
+def make_device(gpu_ids: list[int]) -> torch.device:
     # use by default if none specified
     if not gpu_ids and torch.cuda.is_available():
         gpu_ids = [0]
