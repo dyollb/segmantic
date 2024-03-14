@@ -9,6 +9,7 @@ import torch
 from monai.config import KeysCollection, PathLike
 from monai.config.type_definitions import NdarrayOrTensor
 from monai.data.folder_layout import FolderLayout
+from monai.data.meta_tensor import MetaTensor
 from monai.transforms import (
     GaussianSmooth,
     ScaleIntensity,
@@ -16,7 +17,7 @@ from monai.transforms import (
 )
 from monai.transforms.transform import MapTransform
 from monai.utils import ImageMetaKey as Key
-from monai.utils import convert_to_numpy, convert_to_tensor
+from monai.utils import convert_to_dst_type, convert_to_numpy, convert_to_tensor
 from monai.utils.enums import PostFix
 
 __all__ = ["LoadVert", "SaveVert", "EmbedVert", "ExtractVertPosition", "VertHeatMap"]
@@ -136,15 +137,20 @@ class EmbedVert(MapTransform):
 
     def __call__(self, data):
         d = dict(data)
+
+        ref_image = d[self.ref_key]
+
         ref_meta_key = f"{self.ref_key}_{self.meta_key_postfix}"
-        if "affine" in d[ref_meta_key]:
-            affine = convert_to_numpy(d[ref_meta_key]["affine"])
+        meta_data = (
+            ref_image.meta if isinstance(ref_image, MetaTensor) else d[ref_meta_key]
+        )
+        if "affine" in meta_data:
+            affine = convert_to_numpy(meta_data["affine"])
         else:
             affine = np.eye(4, 4)
         rot_inv = np.linalg.inv(affine[:3, :3])
         t = affine[:3, 3]
 
-        ref_image = d[self.ref_key]
         for k in self.keys:
             vertices = d[k]
             out = np.zeros_like(ref_image)
@@ -153,10 +159,13 @@ class EmbedVert(MapTransform):
                 continuous_idx = np.dot(rot_inv, p - t)
                 idx = np.round(continuous_idx).astype(int)
                 out[idx[0], idx[1], idx[2]] = label
-            d[k] = out
+            d[k] = convert_to_dst_type(out, dst=ref_image)[0]
 
-            meta_key = f"{k}_{self.meta_key_postfix}"
-            d[meta_key].update({"affine": affine, "original_channel_dim": "no_channel"})
+            if not isinstance(ref_image, MetaTensor):
+                meta_key = f"{k}_{self.meta_key_postfix}"
+                d[meta_key].update(
+                    {"affine": affine, "original_channel_dim": "no_channel"}
+                )
 
         return d
 
