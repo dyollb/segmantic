@@ -193,8 +193,9 @@ class ExtractVertPosition(MapTransform):
         d: Dict = dict(data)
         for key in self.key_iterator(d):
             # locate vertices
+            img = d[key]
             vertices = {}
-            for id in range(1, d[key].shape[0]):
+            for id in range(1, img.shape[0]):
                 if d[key][id, ...].max() < self.threshold:
                     continue
                 X, Y, Z = np.where(d[key][id, ...] == d[key][id, ...].max())
@@ -203,9 +204,9 @@ class ExtractVertPosition(MapTransform):
 
             # transform to physical coordinates
             meta_key = f"{key}_{self.meta_key_postfix}"
-            meta = d.get(meta_key, {})
-            if "affine" in meta:
-                affine = meta["affine"]
+            meta_data = img.meta if isinstance(img, MetaTensor) else d[meta_key]
+            if "affine" in meta_data:
+                affine = convert_to_numpy(meta_data["affine"])
                 rot = affine[:3, :3]
                 t = affine[:3, 3]
                 for id in vertices:
