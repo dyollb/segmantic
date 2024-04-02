@@ -29,6 +29,7 @@ dependencies = [
     "monai",
     "nibabel",
     "pytorch-lightning",
+    "scikit-image",
     "scikit-learn",
     "SimpleITK",
     "sitk-cli",
