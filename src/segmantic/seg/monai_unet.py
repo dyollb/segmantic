@@ -142,7 +142,7 @@ class Net(pl.LightningModule):
         self.best_val_dice = 0.0
         self.best_val_epoch = 0.0
         self.validation_step_outputs: list[dict] = []
-        self.training_step_outputs = []
+        self.training_step_outputs: list[torch.Tensor] = []
 
     @property
     def num_channels(self):
@@ -591,8 +591,8 @@ def train(
 def predict(
     model_file: Path,
     test_images: list[Path],
+    output_dir: Path,
     test_labels: Optional[list[Path]] = None,
-    output_dir: Path = None,
     tissue_dict: dict[str, int] = None,
     channels: tuple[int, ...] = (16, 32, 64, 128, 256),
     strides: tuple[int, ...] = (2, 2, 2, 2),
@@ -750,7 +750,7 @@ def predict(
             delimiter=",",
         )
 
-        if test_labels:
+        if test_labels and confusion is not None:
             plot_confusion_matrix(
                 confusion,
                 tissue_names,

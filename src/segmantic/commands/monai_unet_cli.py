@@ -174,7 +174,7 @@ def predict(
         None, "--tissue-list", "-t", help="label descriptors in iSEG format"
     ),
     results_dir: Path = typer.Option(
-        None, "--results-dir", "-r", help="output directory"
+        ..., "--results-dir", "-r", help="output directory"
     ),
     spacing: list[float] = typer.Option(
         [], "--spacing", help="if specified, the image is first resampled"
