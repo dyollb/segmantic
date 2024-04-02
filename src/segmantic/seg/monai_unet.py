@@ -2,6 +2,7 @@ import json
 import os
 import subprocess as sp
 import sys
+import warnings
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
@@ -23,7 +24,7 @@ from monai.data import (
 from monai.engines import EnsembleEvaluator
 from monai.inferers import SlidingWindowInferer, sliding_window_inference
 from monai.losses import DiceLoss
-from monai.metrics import ConfusionMatrixMetric, CumulativeAverage, DiceMetric
+from monai.metrics import CumulativeAverage, DiceMetric
 from monai.networks.layers.factories import Norm
 from monai.networks.nets import UNet
 from monai.networks.utils import one_hot
@@ -32,8 +33,10 @@ from monai.transforms import (
     AsDiscreted,
     Compose,
     CropForegroundd,
+    DeleteItemsd,
     EnsureType,
     EnsureTyped,
+    ForegroundMaskd,
     Invertd,
     LoadImaged,
     MeanEnsembled,
@@ -63,8 +66,9 @@ from pytorch_lightning.callbacks import (
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from ..image.labels import load_decathlon_tissuelist, load_tissue_list
+from ..seg.ensemble import SelectBestEnsembled
 from ..seg.enum import EnsembleCombination
-from ..seg.transforms import SelectBestEnsembled
+from ..seg.transforms import SelectChanneld
 from ..utils import config
 from .dataset import PairedDataSet
 from .evaluation import confusion_matrix
@@ -83,10 +87,7 @@ class Net(pl.LightningModule):
     optimizer: dict = {
         "optimizer": "Adam",
         "lr": 1e-4,
-        "momentum": 0.9,
-        "epsilon": 1e-8,
         "amsgrad": False,
-        "weight_decouple": False,
     }
     lr_scheduling: dict = {
         "scheduler": "Constant",
@@ -106,6 +107,7 @@ class Net(pl.LightningModule):
         strides: tuple[int, ...] = (2, 2, 2, 2),
         dropout: float = 0.0,
         act: str = "PRELU",
+        threshold_foreground: bool = False,
     ):
         super().__init__()
 
@@ -136,9 +138,15 @@ class Net(pl.LightningModule):
         self.dice_metric = DiceMetric(
             include_background=False, reduction="mean", get_not_nans=False
         )
+        self.threshold_foreground = threshold_foreground
         self.best_val_dice = 0.0
         self.best_val_epoch = 0.0
         self.validation_step_outputs: list[dict] = []
+        self.training_step_outputs = []
+
+    @property
+    def num_channels(self):
+        return self._model.in_channels
 
     @property
     def num_classes(self):
@@ -161,12 +169,33 @@ class Net(pl.LightningModule):
                 ensure_channel_first=True,
             ),
             Orientationd(keys=keys, axcodes="RAS"),
-            NormalizeIntensityd(keys="image", nonzero=False, channel_wise=True),
+        ]
+
+        threshold_foreground = self.threshold_foreground or "label" not in keys
+        threshold_key = "image"
+        if threshold_foreground:
+            if self.num_channels > 0:
+                threshold_key = "maskimage_0"
+                xforms += [
+                    SelectChanneld(keys="image", new_key_postfix="_0"),
+                    ForegroundMaskd(keys="image_0", invert=True, new_key_prefix="mask"),
+                    DeleteItemsd(keys="image_0"),
+                ]
+            else:
+                threshold_key = "maskimage"
+                xforms.append(
+                    ForegroundMaskd(keys="image", invert=True, new_key_prefix="mask")
+                )
+
+        xforms += [
             CropForegroundd(
                 keys=keys,
-                source_key="label" if "label" in keys else "image",
+                source_key=threshold_key if threshold_foreground else "label",
+                margin=0,
                 allow_smaller=False,
             ),
+            DeleteItemsd(keys=threshold_key),
+            NormalizeIntensityd(keys="image", nonzero=False, channel_wise=True),
             EnsureTyped(keys=keys, dtype=torch.float32, device=self.device),  # type: ignore
         ]
 
@@ -226,7 +255,7 @@ class Net(pl.LightningModule):
             raise RuntimeError("The dataset is not set")
 
         # set deterministic training for reproducibility
-        set_determinism(seed=0)
+        set_determinism(seed=42)
 
         # define the data transforms
         preprocessing = None
@@ -300,7 +329,7 @@ class Net(pl.LightningModule):
             optimizer = torch.optim.Adam(
                 self._model.parameters(),
                 lr=self.optimizer["lr"],
-                amsgrad=self.optimizer["amsgrad"],
+                amsgrad=self.optimizer.get("amsgrad"),
             )
         elif self.optimizer["optimizer"] == "AdaBelief":
             optimizer = AdaBelief(
@@ -344,8 +373,15 @@ class Net(pl.LightningModule):
         loss = self.loss_function(output, labels)
         self.manual_backward(loss)
         optimizer.step()
+        self.training_step_outputs.append(loss)
         tensorboard_logs = {"train_loss": loss.item()}
         return {"loss": loss, "log": tensorboard_logs}
+
+    def on_train_epoch_end(self):
+        # do something with all training_step outputs, for example:
+        self.train_loss = torch.stack(self.training_step_outputs).mean()
+        self.log("train_loss", self.train_loss)
+        self.training_step_outputs.clear()
 
     def validation_step(self, batch, batch_idx):
         images, labels = batch["image"], batch["label"]
@@ -360,7 +396,7 @@ class Net(pl.LightningModule):
         self.dice_metric(y_pred=outputs, y=labels)
         d = {"val_loss": loss, "val_number": len(outputs)}
         self.validation_step_outputs.append(d)
-        return {"val_loss": loss, "val_number": len(outputs)}
+        return d
 
     def on_validation_epoch_end(self):
         val_loss, num_items = 0, 0
@@ -412,6 +448,7 @@ def train(
     augmentation: dict = {},
     augment_intensity: bool = False,
     augment_spatial: bool = False,
+    threshold_foreground: bool = False,
     channels: tuple[int, ...] = (16, 32, 64, 128, 256),
     strides: tuple[int, ...] = (2, 2, 2, 2),
     dropout: float = 0.0,
@@ -430,10 +467,7 @@ def train(
         optimizer = {
             "optimizer": "Adam",
             "lr": 1e-4,
-            "momentum": 0.9,
-            "epsilon": 1e-8,
             "amsgrad": False,
-            "weight_decouple": False,
         }
     if lr_scheduling is None:
         lr_scheduling = {
@@ -446,7 +480,11 @@ def train(
 
     # initialise the LightningModule
     if checkpoint_file and Path(checkpoint_file).exists():
-        net: Net = Net.load_from_checkpoint(f"{checkpoint_file}", map_location="cpu")
+        net: Net = Net.load_from_checkpoint(
+            f"{checkpoint_file}",
+            map_location="cpu",
+            threshold_foreground=threshold_foreground,
+        )
         net.best_val_dice = 0.0
     else:
         if num_classes > 0 and tissue_list:
@@ -474,6 +512,7 @@ def train(
             strides=strides,
             dropout=dropout,
             act=act,
+            threshold_foreground=threshold_foreground,
         )
     if image_dir and labels_dir:
         net.dataset = PairedDataSet(image_dir=image_dir, labels_dir=labels_dir)
@@ -505,7 +544,8 @@ def train(
         monitor="val_dice",
         mode="max",
         dirpath=output_dir if output_dir else log_dir,
-        save_top_k=3,
+        save_top_k=5,
+        save_last=True,
     )
 
     # defining early stopping. When val loss improves less than 0 over 30 epochs, the training will be stopped.
@@ -642,8 +682,6 @@ def predict(
     dice_metric = DiceMetric(
         include_background=False, reduction="mean", get_not_nans=False
     )
-    confusion_metrics = ["sensitivity", "specificity", "precision", "accuracy"]
-    conf_matrix = ConfusionMatrixMetric(metric_name=confusion_metrics)
     mean_class_dice = CumulativeAverage()
 
     def to_one_hot(x):
@@ -653,75 +691,70 @@ def predict(
     if tissue_dict:
         for name in tissue_dict.keys():
             idx = tissue_dict[name]
-            tissue_names[idx] = name
+            tissue_names[idx] = name.strip()
 
-    def print_table(header, vals, indent="\t"):
-        print(indent + "\t".join(header).expandtabs(30))
-        print(indent + "\t".join(f"{x}" for x in vals).expandtabs(30))
-
+    confusion = None
     all_mean_dice = []
     with torch.no_grad():
-        for test_data in test_loader:
-            val_pred = inferer(test_data["image"].to(device), net)
-            assert isinstance(val_pred, torch.Tensor)
+        with open(output_dir / "_eval_dice.csv", "w") as eval_fp:
+            print(",".join(["Case"] + tissue_names), file=eval_fp)
 
-            test_data["pred"] = val_pred
-            for i in decollate_batch(test_data):
-                post_transforms(i)
+            for idx, test_data in enumerate(test_loader):
+                val_pred = inferer(test_data["image"].to(device), net)
+                assert isinstance(val_pred, torch.Tensor)
 
-            if test_labels:
-                val_pred = val_pred.argmax(dim=1, keepdim=True)
-                val_labels = test_data["label"].to(device).long()
+                test_data["pred"] = val_pred
+                for i in decollate_batch(test_data):
+                    post_transforms(i)
 
-                dice: torch.Tensor = dice_metric(  # type: ignore [assignment]
-                    y_pred=to_one_hot(val_pred), y=to_one_hot(val_labels)
-                )
-                mean_class_dice.append(dice)
-                conf_matrix(y_pred=to_one_hot(val_pred), y=to_one_hot(val_labels))
+                if test_labels:
+                    filename = test_data["image_meta_dict"]["filename_or_obj"]
+                    if filename and isinstance(filename, list):
+                        filename = filename[0]
+                    name = (
+                        Path(filename).stem.replace(".nii", "")
+                        if filename
+                        else f"{idx}"
+                    )
 
-                dice_np = dice.cpu().numpy()
-                print("Mean Dice: ", np.mean(dice_np))
-                print("Class Dice:")
-                print_table(tissue_names, np.squeeze(dice_np))
+                    val_pred = val_pred.argmax(dim=1, keepdim=True)
+                    val_labels = test_data["label"].to(device).long()
 
-                all_mean_dice.append(dice_metric.aggregate().item())  # type: ignore
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        dice: torch.Tensor = dice_metric(  # type: ignore [assignment]
+                            y_pred=to_one_hot(val_pred), y=to_one_hot(val_labels)
+                        )
+                    mean_class_dice.append(dice)
 
-                filename_or_obj = test_data["image_meta_dict"]["filename_or_obj"]
-                if filename_or_obj and isinstance(filename_or_obj, list):
-                    filename_or_obj = filename_or_obj[0]
+                    dice_np = dice.cpu().numpy()
+                    print(
+                        f"[{idx+1}/{len(test_loader)}] {name}, mean Dice: ",
+                        np.mean(dice_np),
+                    )
 
-                if output_dir and filename_or_obj:
-                    base = Path(filename_or_obj).stem.replace(".nii", "")
+                    class_dice = [str(v) for v in np.squeeze(dice_np).tolist()]
+                    print(", ".join([name] + class_dice), file=eval_fp)
+
+                    all_mean_dice.append(dice_metric.aggregate().item())  # type: ignore
+
                     c = confusion_matrix(
                         num_classes=num_classes,
                         y_pred=val_pred.view(-1).cpu().numpy(),
                         y=val_labels.view(-1).cpu().numpy(),
                     )
-                    plot_confusion_matrix(
-                        c,
-                        tissue_names,
-                        file_name=output_dir / (base + "_confusion.png"),
-                    )
-        if output_dir is None:
-            print("No output path specified, dice scores won't be saved.")
-        else:
-            np.savetxt(
-                output_dir / f"mean_dice_{model_file.stem}_generalized_score.txt",
-                all_mean_dice,
-                delimiter=",",
-            )
+                    confusion = c if confusion is None else (confusion + c)
+        np.savetxt(
+            output_dir / f"_eval_mean_dice_{model_file.stem}.txt",
+            all_mean_dice,
+            delimiter=",",
+        )
 
         if test_labels:
-            print("*" * 80)
-            print("Total Mean Dice: ", dice_metric.aggregate().item())  # type: ignore
-            print("Total Class Dice:")
-            print_table(
-                tissue_names, np.squeeze(mean_class_dice.aggregate().cpu().numpy())  # type: ignore
-            )
-            print("Total Conf. Matrix Metrics:")
-            print_table(
-                confusion_metrics,
-                (np.squeeze(x.cpu().numpy()) for x in conf_matrix.aggregate()),  # type: ignore
+            plot_confusion_matrix(
+                confusion,
+                tissue_names,
+                file_name=output_dir / ("_eval_confusion.png"),
             )
 
 

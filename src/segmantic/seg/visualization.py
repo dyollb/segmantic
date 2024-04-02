@@ -80,7 +80,7 @@ def plot_confusion_matrix(
                           target_names = y_labels_vals,       # list of names of the classes
                           title        = best_estimator_name) # title of graph
 
-    Citiation
+    Citation
     ---------
     http://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html
 
@@ -93,7 +93,8 @@ def plot_confusion_matrix(
         cmap = plt.get_cmap("Blues")
 
     if normalize:
-        cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
 
     fig = plt.figure(figsize=(16, 16))
     plt.imshow(cm, interpolation="nearest", cmap=cmap)
@@ -111,7 +112,7 @@ def plot_confusion_matrix(
             plt.text(
                 j,
                 i,
-                f"{cm[i, j]:0.4f}",
+                f"{cm[i, j]:0.2f}",
                 horizontalalignment="center",
                 color="white" if cm[i, j] > thresh else "black",
             )
