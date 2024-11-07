@@ -565,9 +565,7 @@ def predict(
             settings = json.load(json_file)
         net: Net = Net.load_from_checkpoint(f"{model_file}", **settings)
     else:
-        net = Net.load_from_checkpoint(
-            f"{model_file}"
-        )
+        net = Net.load_from_checkpoint(f"{model_file}")
     num_classes = net.num_classes
 
     net.freeze()
