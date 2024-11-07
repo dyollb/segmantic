@@ -760,7 +760,7 @@ def cross_validate(
 
     for config_file in Path(config_files_dir).iterdir():
         assert config_file.suffix in [".json", ".yml"], f"suffix: {config_file}"
-        is_json = config_file and config_file.suffix.lower() == ".json"
+        is_json = config_file.suffix.lower() == ".json"
         dumps = partial(config.dumps, is_json=is_json)
         loads = partial(config.loads, is_json=is_json)
 
@@ -818,9 +818,6 @@ def cross_validate(
                             test_images=test_images,
                             test_labels=test_labels,
                             tissue_dict=tissue_dict,
-                            # channels=current_layers,
-                            # strides=current_strides,
-                            dropout=0.0,
                             spacing=[1, 1, 1],
                             gpu_ids=gpu_ids,
                         )
