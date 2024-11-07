@@ -554,9 +554,6 @@ def predict(
     test_labels: Optional[list[Path]] = None,
     output_dir: Path = None,
     tissue_dict: dict[str, int] = None,
-    channels: tuple[int, ...] = (16, 32, 64, 128, 256),
-    strides: tuple[int, ...] = (2, 2, 2, 2),
-    dropout: float = 0.0,
     spacing: Sequence[float] = [],
     gpu_ids: list[int] = [],
 ) -> None:
@@ -569,7 +566,7 @@ def predict(
         net: Net = Net.load_from_checkpoint(f"{model_file}", **settings)
     else:
         net = Net.load_from_checkpoint(
-            f"{model_file}", channels=channels, strides=strides, dropout=dropout
+            f"{model_file}"
         )
     num_classes = net.num_classes
 
