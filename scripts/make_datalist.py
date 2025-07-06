@@ -5,9 +5,13 @@ from pathlib import Path
 import typer
 
 from segmantic.image.labels import load_tissue_list
+from segmantic.seg.dataset import PairedDataSet
 from segmantic.utils.file_iterators import find_matching_files
 
+app = typer.Typer()
 
+
+@app.command()
 def make_datalist(
     data_dir: Path = typer.Option(
         ...,
@@ -73,8 +77,60 @@ def make_datalist(
     return datalist_path.write_text(json.dumps(data_config, indent=2))
 
 
+@app.command()
+def extend_datalist(
+    data_dir: Path = typer.Option(
+        ...,
+        help="root data directory. Paths in datalist will be relative to this directory",
+    ),
+    image_dir: Path = typer.Option(..., help="Directory containing images"),
+    labels_dir: Path = typer.Option(None, help="Directory containing labels"),
+    datalist_path: Path = typer.Option(..., help="Filename of input datalist"),
+    output_path: Path = typer.Option(..., help="Filename of output datalist"),
+    image_glob: str = "*.nii.gz",
+    labels_glob: str = "*.nii.gz",
+):
+    ds = PairedDataSet.load_from_json(datalist_path)
+    images = [d["image"].name.lower() for d in ds.training_files()]
+    images += [d["image"].name.lower() for d in ds.validation_files()]
+    images += [d["image"].name.lower() for d in ds.test_files()]
+
+    if image_dir.is_absolute():
+        image_dir = image_dir.relative_to(data_dir)
+    if labels_dir.is_absolute():
+        labels_dir = labels_dir.relative_to(data_dir)
+
+    matches = find_matching_files(
+        [data_dir / image_dir / image_glob, data_dir / labels_dir / labels_glob]
+    )
+
+    training_data = list(ds.training_files())
+    for p in matches:
+        image_name = p[0].name.lower()
+        if image_name not in images:
+            training_data.append({"image": p[0], "label": p[1]})
+
+    def make_relative(d: dict[str, Path]):
+        return {key: str(d[key].relative_to(data_dir)) for key in d}
+
+    data_config = json.loads(datalist_path.read_text())
+
+    data_config["training"] = [make_relative(v) for v in training_data]
+    data_config["validation"] = [make_relative(v) for v in ds.validation_files()]
+    # data_config["test"] = (make_relative(v)["image"] for v in ds.test_files())
+    return output_path.write_text(json.dumps(data_config, indent=2))
+
+
+@app.command()
+def print_stats(datalist: Path):
+    ds = PairedDataSet.load_from_json(datalist)
+    print(f"Training cases: {len(ds.training_files())}")
+    print(f"Validation cases: {len(ds.validation_files())}")
+    print(f"Test cases: {len(ds.test_files())}")
+
+
 def main():
-    typer.run(make_datalist)
+    app()
 
 
 if __name__ == "__main__":
